@@ -776,7 +776,7 @@ function drawOneSlot(sl,P){
   drawSlotText(slotTxt(sl),x+w/2,y+h/2,w*0.96,h*0.96,{fam:slotFam(sl),wt:sl.wt||'700',fs:(sl.fs||44)*P.s,min:(sl.min||18)*P.s,color:sl.color||'#8c1c24',lines:sl.lines||2,st:S.tstyle&&S.tstyle['slot:'+sl.id]});
 }
 function drawSlots(P,run){
-  const capOn=!!(S.caps&&run&&run.speaking);
+  const capOn=!!(S.caps&&run&&(run.speaking||(NOW()-run.t0)/1000<run.vStart)); /* fix 24.11: the slot's own text does not show before the voice starts */
   if(S.openView==='box'&&S.openBox&&ui.studio&&!run){const b=S.openBox;SB['open:box']={x0:P.ox+b.x0*P.s,y0:P.oy+b.y0*P.s,x1:P.ox+b.x1*P.s,y1:P.oy+b.y1*P.s};} /* v2.9.37 opening close-up box */
   for(const sl of (S.slots||[])){
     if(sl.off)continue;
@@ -980,7 +980,7 @@ function render(t,run){
   const GL=[tr('Captions appear here')];
   const CS=AT&&PICT?capSlot():null; /* v2.9.36: captions inside a place (e.g. the plaque) */
   if(CS){if(speaking){const P=PICT,x=P.ox+CS.x0*P.s,y=P.oy+CS.y0*P.s,w=(CS.x1-CS.x0)*P.s,h=(CS.y1-CS.y0)*P.s,fs=Math.round(Math.min((CS.fs||44)*0.8,40)*P.s);
-      const pg=capPages(w*0.92,fs,'slot');if(!pg.length)drawOneSlot(CS,P);else tblk('cap',()=>drawSlotText(pg.join(' '),x+w/2,y+h/2,w*0.94,h*0.94,{fam:(String(T.body).match(/\{s\}px\s+(.+)$/)||[,'Georgia, serif'])[1],wt:/italic/.test(T.body)?'italic 600':'600',fs,min:Math.max(10,fs*0.55),color:S.capFg||CS.color||'#8c1c24',lines:2}));}}
+      const pg=capPages(w*0.92,fs,'slot');if(!pg.length){/* fix 24.11: empty while the voice runs; own text only after the voice */}else tblk('cap',()=>drawSlotText(pg.join(' '),x+w/2,y+h/2,w*0.94,h*0.94,{fam:(String(T.body).match(/\{s\}px\s+(.+)$/)||[,'Georgia, serif'])[1],wt:/italic/.test(T.body)?'italic 600':'600',fs,min:Math.max(10,fs*0.55),color:S.capFg||CS.color||'#8c1c24',lines:2}));}}
   else if(AT){
     if(speaking)capBox(W/2,1640,880,54,42,'rgba(0,0,0,0.5)','#ffffff',capPages(880,42,'art'));
     else{if(ghost)capBox(W/2,1640,880,54,42,'','',GL,true);
