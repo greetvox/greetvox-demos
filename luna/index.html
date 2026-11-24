@@ -1304,7 +1304,7 @@ const C={"v":2,"base":"https://demo.getgreetvox.com/luna","title":"Ķepa uz sird
     await Promise.race([Promise.all([ready,frs]),new Promise(ok=>setTimeout(ok,8000))]);
     await loadTextFonts();ui.loading=false;
     const TT=S.brand?brandTheme(TH[S.theme]):TH[S.theme];document.documentElement.style.background=document.body.style.background=TT.bg;
-    started=true;ui.hold=false;play(false);busy=false;if(inv)setTimeout(inv.show,2200);}
+    started=true;ui.loading=true;await play(false);ui.loading=false;ui.hold=false;busy=false; /* fix 24.11: keep the opening screen until the run starts (no flash of the full card) */if(inv)setTimeout(inv.show,2200);}
   cv.addEventListener('click',()=>{if(!started)go();});
   again.addEventListener('click',go);
   const sf=scriptFams(lang);if(LG(lang).rtl)document.documentElement.dir='rtl';
