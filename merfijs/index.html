@@ -1,0 +1,1320 @@
+<!doctype html>
+<html lang="lv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="ai-generated" content="true">
+<meta name="description" content="A talking greeting card. The voice and character are made with AI.">
+<title>A greeting for you</title>
+<meta property="og:title" content="A greeting for you">
+<meta property="og:image" content="https://demo.getgreetvox.com/merfijs/preview.png">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;600;700&family=Nunito:wght@400;500;600;700;800&family=Crimson+Pro:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600;1,700&family=Inter:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600;1,700&display=swap" rel="stylesheet">
+<style>
+html,body{margin:0;height:100%;background:#0f2a44;overflow:hidden;-webkit-tap-highlight-color:transparent}
+#wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+canvas{display:block;width:min(100vw,calc(100dvh*0.5625));height:auto;aspect-ratio:9/16;cursor:pointer;touch-action:manipulation}
+#again{position:fixed;left:50%;bottom:max(18px,env(safe-area-inset-bottom));transform:translateX(-50%);font:500 16px Inter,Arial,sans-serif;padding:10px 20px;border-radius:999px;border:0;background:rgba(0,0,0,.55);color:#fff;cursor:pointer}
+.hide{display:none}
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="cv" width="1080" height="1920"></canvas></div>
+<button id="again" class="hide"></button>
+<script>
+
+const $=id=>document.getElementById(id);
+/* hooks: the Studio and the web card fill these in */
+const ui={tr:s=>s,status:()=>{},hold:false,interactive:true};
+const cv=$('cv'),ctx=cv.getContext('2d'),W=1080,H=1920;
+/* v2.9.32: virtual clock. During the precise MP4 export VCLK holds the video time, so every animation is drawn for the exact frame time instead of the computer's clock */
+let VCLK=null,EXP=false;const NOW=()=>VCLK!=null?VCLK*1000:performance.now();
+
+const TH={
+  A:{bg:'#1c1c1e',fg:'#e9e4d8',muted:'#bdb7a9',acc:'#e98a3a',cover:'#141416',
+     head:'400 {s}px "Playfair Display", Georgia, serif',hs:250,
+     body:'400 {s}px Inter, Arial, sans-serif',top:'500 {s}px Inter, Arial, sans-serif',topSpace:14,
+     av:{ring:'#e98a3a',fill:'#1c1c1e',line:'#e9e4d8',eye:'#e9e4d8',mouth:'#e98a3a',ear:'#e9e4d8',snout:'#1c1c1e',lw:6}},
+  B:{bg:'#efe2c8',fg:'#3b2412',muted:'#7a4a22',acc:'#c9562c',cover:'#e4d3b3',
+     head:'500 {s}px "Crimson Pro", Georgia, serif',hs:200,
+     body:'italic 400 {s}px "Crimson Pro", Georgia, serif',top:'italic 400 {s}px "Crimson Pro", Georgia, serif',topSpace:2,
+     av:{ring:'#7a4a22',fill:'#2a1a10',line:'#2a1a10',eye:'#e0a24a',mouth:'#c9562c',ear:'#2a1a10',snout:'#3d2616',lw:4}},
+  C:{bg:'#4b2a7a',fg:'#ffffff',muted:'#e4d6f7',acc:'#c8f26b',cover:'#3a1f60',
+     head:'800 {s}px Nunito, Arial, sans-serif',hs:210,
+     body:'600 {s}px Nunito, Arial, sans-serif',top:'600 {s}px Nunito, Arial, sans-serif',topSpace:3,
+     av:{ring:'#c8f26b',fill:'#d9a066',line:'#7a4b24',eye:'#2b1a0e',mouth:'#7a2a1a',ear:'#a86c3a',snout:'#f0c99a',lw:6}},
+  D:{bg:'#133a2c',fg:'#f6f1e4',muted:'#cdd9cc',acc:'#d9b35b',cover:'#0d2a20',
+     head:'400 {s}px "Playfair Display", Georgia, serif',hs:230,
+     body:'400 {s}px Inter, Arial, sans-serif',top:'500 {s}px Inter, Arial, sans-serif',topSpace:10,
+     av:{ring:'#d9b35b',fill:'#133a2c',line:'#f6f1e4',eye:'#f6f1e4',mouth:'#d9b35b',ear:'#f6f1e4',snout:'#133a2c',lw:6}}
+};
+function withScript(f){const x=scriptFams(S.lang);if(!x)return f;const serif=/serif\s*$/.test(f)&&!/sans-serif\s*$/.test(f);
+  const fam='"'+(serif?x[1]:x[0])+'"';const i=f.indexOf(',');return i<0?f+', '+fam:f.slice(0,i)+', '+fam+f.slice(i);}
+const font=(tpl,s)=>withScript(tpl.replace('{s}',s));
+/* card languages: 7 standard + all Eleven v3 languages (non-EN/LV texts need a native-speaker check) */
+const ALL_LANGS=[{"c":"en","n":"English","en":"English","tts":"en-GB","s":"lat","tap":"tap to open","you":"for you","open":"{name}, this is for you","again":"play again","ai":"Made with AI"},{"c":"lv","n":"Latviešu","en":"Latvian","tts":"lv-LV","s":"lat","tap":"pieskaries, lai atvērtu","you":"Tev","open":"{name}, tas ir {Tev|Jums}","again":"atskaņot vēlreiz","ai":"Veidots ar AI"},{"c":"ru","n":"Русский","en":"Russian","tts":"ru-RU","s":"cyr","tap":"нажми, чтобы открыть","you":"для тебя","open":"{name}, это {тебе|Вам}","again":"ещё раз","ai":"Создано с помощью ИИ"},{"c":"de","n":"Deutsch","en":"German","tts":"de-DE","s":"lat","tap":"zum Öffnen tippen","you":"für dich","open":"{name}, das ist für {dich|Sie}","again":"nochmal abspielen","ai":"Mit KI erstellt"},{"c":"lt","n":"Lietuvių","en":"Lithuanian","tts":"lt-LT","s":"lat","tap":"paliesk, kad atidarytum","you":"Tau","open":"{name}, tai {Tau|Jums}","again":"groti dar kartą","ai":"Sukurta naudojant DI"},{"c":"et","n":"Eesti","en":"Estonian","tts":"et-EE","s":"lat","tap":"puuduta avamiseks","you":"sulle","open":"{name}, see on {sulle|Teile}","again":"mängi uuesti","ai":"Loodud tehisintellekti abil"},{"c":"es","n":"Español","en":"Spanish","tts":"es-ES","s":"lat","tap":"toca para abrir","you":"para ti","open":"{name}, esto es para {ti|usted}","again":"ver otra vez","ai":"Creado con IA"},{"c":"af","n":"Afrikaans","en":"Afrikaans","tts":"af-ZA","s":"lat","tap":"tik om oop te maak","you":"vir jou","open":"{name}, dit is vir jou","again":"speel weer","ai":"Gemaak met KI","subj":"{name}, 'n groet vir jou van {sender}","intro":"Hallo {name}! Ons het 'n klein groet vir jou. Skakel die klank aan en maak die kaartjie oop:"},{"c":"ar","n":"العربية","en":"Arabic","tts":"ar-SA","s":"ar","tap":"اضغط للفتح","you":"لك","open":"{name}، هذه لك","again":"إعادة التشغيل","ai":"صُنع بالذكاء الاصطناعي","rtl":1,"subj":"{name}، تحية لك من {sender}","intro":"مرحبًا {name}! لدينا تحية صغيرة لك. شغّل الصوت وافتح البطاقة:"},{"c":"hy","n":"Հայերեն","en":"Armenian","tts":"hy-AM","s":"hy","tap":"հպեք՝ բացելու համար","you":"քեզ համար","open":"{name}, սա {քեզ|Ձեզ} համար է","again":"նորից","ai":"Ստեղծված է ԱԲ-ով","subj":"{name}, ողջույն {sender}-ից","intro":"Բարև, {name}։ Մենք փոքրիկ ողջույն ունենք {քեզ|Ձեզ} համար։ Միացրեք ձայնը և բացեք բացիկը․"},{"c":"as","n":"অসমীয়া","en":"Assamese","tts":"as-IN","s":"beng","tap":"খুলিবলৈ টিপক","you":"আপোনাৰ বাবে","open":"{name}, এইটো আপোনাৰ বাবে","again":"পুনৰ বজাওক","ai":"AIৰে নিৰ্মিত","subj":"{name}, {sender}ৰ পৰা আপোনালৈ শুভেচ্ছা","intro":"নমস্কাৰ {name}! আপোনাৰ বাবে এটা সৰু শুভেচ্ছা আছে। শব্দ অন কৰি কাৰ্ডখন খোলক:"},{"c":"az","n":"Azərbaycan","en":"Azerbaijani","tts":"az-AZ","s":"lat","tap":"açmaq üçün toxun","you":"sənin üçün","open":"{name}, bu {sənin|Sizin} üçündür","again":"yenidən oxut","ai":"Sİ ilə yaradılıb","subj":"{name}, {sender} tərəfindən {sənə|Sizə} təbrik","intro":"Salam, {name}! {Sənin|Sizin} üçün kiçik bir təbrikimiz var. Səsi açın və kartı açın:"},{"c":"be","n":"Беларуская","en":"Belarusian","tts":"be-BY","s":"cyr","tap":"націсні, каб адкрыць","you":"для цябе","open":"{name}, гэта для {цябе|Вас}","again":"яшчэ раз","ai":"Створана з дапамогай ШІ","subj":"{name}, для {цябе|Вас} віншаванне ад {sender}","intro":"{Прывітанне|Добры дзень}, {name}! У нас ёсць для {цябе|Вас} невялікае віншаванне. {Уключы гук і адкрый|Уключыце гук і адкрыйце} паштоўку:"},{"c":"bn","n":"বাংলা","en":"Bengali","tts":"bn-BD","s":"beng","tap":"খুলতে ট্যাপ করুন","you":"আপনার জন্য","open":"{name}, এটি আপনার জন্য","again":"আবার চালান","ai":"AI দিয়ে তৈরি","subj":"{name}, {sender}-এর পক্ষ থেকে আপনার জন্য শুভেচ্ছা","intro":"নমস্কার {name}! আপনার জন্য একটি ছোট্ট শুভেচ্ছা আছে। শব্দ চালু করে কার্ডটি খুলুন:"},{"c":"bs","n":"Bosanski","en":"Bosnian","tts":"bs-BA","s":"lat","tap":"dodirni za otvaranje","you":"za tebe","open":"{name}, ovo je za {tebe|Vas}","again":"pusti ponovo","ai":"Napravljeno uz pomoć AI","subj":"{name}, čestitka za {tebe|Vas} od {sender}","intro":"Zdravo, {name}! Imamo malu čestitku za {tebe|Vas}. {Uključi zvuk i otvori|Uključite zvuk i otvorite} čestitku:"},{"c":"bg","n":"Български","en":"Bulgarian","tts":"bg-BG","s":"cyr","tap":"докосни, за да отвориш","you":"за теб","open":"{name}, това е за {теб|Вас}","again":"пусни отново","ai":"Създадено с ИИ","subj":"{name}, поздрав за {теб|Вас} от {sender}","intro":"{Здравей|Здравейте}, {name}! Имаме малък поздрав за {теб|Вас}. {Включи звука и отвори|Включете звука и отворете} картичката:"},{"c":"ca","n":"Català","en":"Catalan","tts":"ca-ES","s":"lat","tap":"toca per obrir","you":"per a tu","open":"{name}, això és per a {tu|vostè}","again":"torna-ho a veure","ai":"Creat amb IA","subj":"{name}, una salutació per a {tu|vostè} de {sender}","intro":"Hola, {name}! Tenim una petita salutació per a {tu|vostè}. {Activa el so i obre|Activi el so i obri} la targeta:"},{"c":"ceb","n":"Cebuano","en":"Cebuano","tts":"fil-PH","s":"lat","tap":"i-tap aron maablihan","you":"para nimo","open":"{name}, para kini nimo","again":"i-play pag-usab","ai":"Gihimo gamit ang AI","subj":"{name}, usa ka pagbati para nimo gikan sa {sender}","intro":"Hi {name}! Aduna mi gamay nga pagbati para nimo. I-on ang tingog ug ablihi ang card:"},{"c":"ny","n":"Chichewa","en":"Chichewa","tts":"en-GB","s":"lat","tap":"dinani kuti mutsegule","you":"kwa inu","open":"{name}, izi ndi zanu","again":"sewerani kachiwiri","ai":"Zapangidwa ndi AI","subj":"{name}, moni kuchokera kwa {sender}","intro":"Moni {name}! Tili ndi moni wawung'ono kwa inu. Yatsani mawu ndipo tsegulani khadi:"},{"c":"zh","n":"中文","en":"Chinese (Mandarin)","tts":"zh-CN","s":"zh","tap":"点击打开","you":"给你","open":"{name}，这是{给你的|送给您的}","again":"再播放一次","ai":"由AI生成","subj":"{name}，{sender}{给你|送给您}的问候","intro":"{name}{你好|您好}！我们为{你|您}准备了一份小小的问候。请打开声音，然后打开贺卡："},{"c":"hr","n":"Hrvatski","en":"Croatian","tts":"hr-HR","s":"lat","tap":"dodirni za otvaranje","you":"za tebe","open":"{name}, ovo je za {tebe|Vas}","again":"pokreni ponovno","ai":"Izrađeno uz pomoć UI","subj":"{name}, čestitka za {tebe|Vas} od {sender}","intro":"{Bok|Poštovani}, {name}! Imamo malu čestitku za {tebe|Vas}. {Uključi zvuk i otvori|Uključite zvuk i otvorite} čestitku:"},{"c":"cs","n":"Čeština","en":"Czech","tts":"cs-CZ","s":"lat","tap":"klepni pro otevření","you":"pro Tebe","open":"{name}, tohle je pro {Tebe|Vás}","again":"přehrát znovu","ai":"Vytvořeno pomocí AI","subj":"{name}, pozdrav pro {Tebe|Vás} od {sender}","intro":"{Ahoj|Dobrý den}, {name}! Máme pro {Tebe|Vás} malý pozdrav. {Zapni zvuk a otevři|Zapněte zvuk a otevřete} přání:"},{"c":"da","n":"Dansk","en":"Danish","tts":"da-DK","s":"lat","tap":"tryk for at åbne","you":"til dig","open":"{name}, det her er til dig","again":"afspil igen","ai":"Lavet med AI","subj":"{name}, en hilsen til dig fra {sender}","intro":"Hej {name}! Vi har en lille hilsen til dig. Tænd for lyden og åbn kortet:"},{"c":"nl","n":"Nederlands","en":"Dutch","tts":"nl-NL","s":"lat","tap":"tik om te openen","you":"voor jou","open":"{name}, dit is voor {jou|u}","again":"opnieuw afspelen","ai":"Gemaakt met AI","subj":"{name}, een groet voor {jou|u} van {sender}","intro":"{Hoi|Beste} {name}, we hebben een kleine groet voor {je|u}. {Zet het geluid aan en open|Zet het geluid aan en opent u} de kaart:"},{"c":"fil","n":"Filipino","en":"Filipino","tts":"fil-PH","s":"lat","tap":"i-tap para buksan","you":"para sa iyo","open":"{name}, para sa iyo ito","again":"i-play muli","ai":"Ginawa gamit ang AI","subj":"{name}, isang pagbati para sa iyo mula sa {sender}","intro":"Kumusta, {name}! May maliit kaming pagbati para sa iyo. I-on ang tunog at buksan ang card:"},{"c":"fi","n":"Suomi","en":"Finnish","tts":"fi-FI","s":"lat","tap":"avaa napauttamalla","you":"sinulle","open":"{name}, tämä on sinulle","again":"toista uudelleen","ai":"Tehty tekoälyllä","subj":"{name}, tervehdys sinulle – {sender}","intro":"Hei {name}! Meillä on sinulle pieni tervehdys. Laita ääni päälle ja avaa kortti:"},{"c":"fr","n":"Français","en":"French","tts":"fr-FR","s":"lat","tap":"touchez pour ouvrir","you":"pour toi","open":"{name}, c'est pour {toi|vous}","again":"rejouer","ai":"Créé avec l'IA","subj":"{name}, un message pour {toi|vous} de la part de {sender}","intro":"{Salut|Bonjour} {name}, nous avons un petit message pour {toi|vous}. {Active le son et ouvre|Activez le son et ouvrez} la carte :"},{"c":"gl","n":"Galego","en":"Galician","tts":"gl-ES","s":"lat","tap":"toca para abrir","you":"para ti","open":"{name}, isto é para {ti|vostede}","again":"ver outra vez","ai":"Creado con IA","subj":"{name}, un saúdo para {ti|vostede} de {sender}","intro":"Ola, {name}! Temos un pequeno saúdo para {ti|vostede}. {Activa o son e abre|Active o son e abra} a tarxeta:"},{"c":"ka","n":"ქართული","en":"Georgian","tts":"ka-GE","s":"ka","tap":"შეეხე გასახსნელად","you":"შენთვის","open":"{name}, ეს {შენთვისაა|თქვენთვისაა}","again":"ხელახლა დაკვრა","ai":"შექმნილია AI-ით","subj":"{name}, მოგესალმებათ {sender}","intro":"გამარჯობა, {name}! {შენთვის|თქვენთვის} პატარა მისალოცი გვაქვს. ჩართეთ ხმა და გახსენით ბარათი:"},{"c":"el","n":"Ελληνικά","en":"Greek","tts":"el-GR","s":"grk","tap":"πάτησε για να ανοίξει","you":"για σένα","open":"{name}, αυτό είναι για {σένα|εσάς}","again":"παίξε ξανά","ai":"Δημιουργήθηκε με ΤΝ","subj":"{name}, μια ευχή για {σένα|εσάς} από {sender}","intro":"{Γεια σου|Γεια σας}, {name}! Έχουμε μια μικρή ευχή για {σένα|εσάς}. {Άνοιξε τον ήχο και άνοιξε|Ανοίξτε τον ήχο και ανοίξτε} την κάρτα:"},{"c":"gu","n":"ગુજરાતી","en":"Gujarati","tts":"gu-IN","s":"gu","tap":"ખોલવા માટે ટૅપ કરો","you":"તમારા માટે","open":"{name}, આ તમારા માટે છે","again":"ફરી વગાડો","ai":"AI વડે બનાવેલ","subj":"{name}, {sender} તરફથી તમારા માટે શુભેચ્છા","intro":"નમસ્તે {name}! તમારા માટે એક નાની શુભેચ્છા છે. અવાજ ચાલુ કરો અને કાર્ડ ખોલો:"},{"c":"ha","n":"Hausa","en":"Hausa","tts":"en-GB","s":"lat","tap":"taɓa don buɗewa","you":"domin ka","open":"{name}, wannan naka ne","again":"sake kunnawa","ai":"An yi shi da AI","subj":"{name}, gaisuwa daga {sender}","intro":"Sannu {name}! Muna da ƙaramar gaisuwa gare ka. Kunna sauti ka buɗe katin:"},{"c":"he","n":"עברית","en":"Hebrew","tts":"he-IL","s":"he","tap":"הקישו כדי לפתוח","you":"בשבילך","open":"{name}, זה בשבילך","again":"נגן שוב","ai":"נוצר באמצעות AI","rtl":1,"subj":"{name}, ברכה בשבילך מ{sender}","intro":"שלום {name}! יש לנו ברכה קטנה בשבילך. הפעילו את הצליל ופתחו את הכרטיס:"},{"c":"hi","n":"हिन्दी","en":"Hindi","tts":"hi-IN","s":"deva","tap":"खोलने के लिए टैप करें","you":"आपके लिए","open":"{name}, यह आपके लिए है","again":"फिर से चलाएँ","ai":"AI से बनाया गया","subj":"{name}, {sender} की ओर से आपके लिए शुभकामनाएँ","intro":"नमस्ते {name}! आपके लिए एक छोटी-सी शुभकामना है। आवाज़ चालू करें और कार्ड खोलें:"},{"c":"hu","n":"Magyar","en":"Hungarian","tts":"hu-HU","s":"lat","tap":"koppints a megnyitáshoz","you":"neked","open":"{name}, ez {neked|Önnek} szól","again":"lejátszás újra","ai":"MI segítségével készült","subj":"{name}, üdvözlet {neked|Önnek} – {sender}","intro":"{Szia|Kedves} {name}! Van egy kis üdvözletünk {neked|Önnek}. {Kapcsold be a hangot, és nyisd meg|Kapcsolja be a hangot, és nyissa meg} a kártyát:"},{"c":"is","n":"Íslenska","en":"Icelandic","tts":"is-IS","s":"lat","tap":"ýttu til að opna","you":"til þín","open":"{name}, þetta er til þín","again":"spila aftur","ai":"Gert með gervigreind","subj":"{name}, kveðja til þín frá {sender}","intro":"Hæ {name}! Við erum með litla kveðju til þín. Kveiktu á hljóðinu og opnaðu kortið:"},{"c":"id","n":"Bahasa Indonesia","en":"Indonesian","tts":"id-ID","s":"lat","tap":"ketuk untuk membuka","you":"untukmu","open":"{name}, ini untuk {kamu|Anda}","again":"putar lagi","ai":"Dibuat dengan AI","subj":"{name}, salam untuk {kamu|Anda} dari {sender}","intro":"Halo {name}! Kami punya salam kecil untuk {kamu|Anda}. Nyalakan suara dan buka kartunya:"},{"c":"ga","n":"Gaeilge","en":"Irish","tts":"ga-IE","s":"lat","tap":"tapáil chun oscailt","you":"duit","open":"{name}, seo duit","again":"seinn arís","ai":"Déanta le hIS","subj":"{name}, beannacht duit ó {sender}","intro":"Dia duit, {name}! Tá beannacht bheag againn duit. Cas an fhuaim air agus oscail an cárta:"},{"c":"it","n":"Italiano","en":"Italian","tts":"it-IT","s":"lat","tap":"tocca per aprire","you":"per te","open":"{name}, questo è per {te|Lei}","again":"riproduci di nuovo","ai":"Creato con l'IA","subj":"{name}, un saluto per {te|Lei} da {sender}","intro":"{Ciao|Gentile} {name}, abbiamo un piccolo saluto per {te|Lei}. {Attiva l'audio e apri|Attivi l'audio e apra} il biglietto:"},{"c":"ja","n":"日本語","en":"Japanese","tts":"ja-JP","s":"ja","tap":"タップして開く","you":"あなたへ","open":"{name}さんへ","again":"もう一度再生","ai":"AIで作成","subj":"{name}様、{sender}よりごあいさつ","intro":"{name}様、ささやかなごあいさつをお届けします。音声をオンにしてカードを開いてください："},{"c":"jv","n":"Basa Jawa","en":"Javanese","tts":"id-ID","s":"lat","tap":"tutul kanggo mbukak","you":"kanggo kowe","open":"{name}, iki kanggo {kowe|panjenengan}","again":"puter maneh","ai":"Digawe nganggo AI","subj":"{name}, salam saka {sender}","intro":"Halo {name}! Kita duwe salam cilik kanggo {kowe|panjenengan}. Uripna swara lan bukak kertu iki:"},{"c":"kn","n":"ಕನ್ನಡ","en":"Kannada","tts":"kn-IN","s":"kn","tap":"ತೆರೆಯಲು ಟ್ಯಾಪ್ ಮಾಡಿ","you":"ನಿಮಗಾಗಿ","open":"{name}, ಇದು ನಿಮಗಾಗಿ","again":"ಮತ್ತೆ ಪ್ಲೇ ಮಾಡಿ","ai":"AI ಬಳಸಿ ರಚಿಸಲಾಗಿದೆ","subj":"{name}, {sender} ಅವರಿಂದ ನಿಮಗೆ ಶುಭಾಶಯ","intro":"ನಮಸ್ಕಾರ {name}! ನಿಮಗಾಗಿ ಒಂದು ಪುಟ್ಟ ಶುಭಾಶಯವಿದೆ. ಧ್ವನಿಯನ್ನು ಆನ್ ಮಾಡಿ ಕಾರ್ಡ್ ತೆರೆಯಿರಿ:"},{"c":"kk","n":"Қазақ","en":"Kazakh","tts":"kk-KZ","s":"cyr","tap":"ашу үшін басыңыз","you":"саған","open":"{name}, бұл {саған|Сізге}","again":"қайта ойнату","ai":"ЖИ көмегімен жасалған","subj":"{name}, {sender} атынан {саған|Сізге} құттықтау","intro":"Сәлеметсіз бе, {name}! {Саған|Сізге} шағын құттықтауымыз бар. Дыбысты қосып, ашықхатты ашыңыз:"},{"c":"ko","n":"한국어","en":"Korean","tts":"ko-KR","s":"ko","tap":"탭하여 열기","you":"당신에게","open":"{name}님, 당신을 위한 카드입니다","again":"다시 재생","ai":"AI로 제작됨","subj":"{name}님, {sender}에서 보내는 인사","intro":"{name}님, 안녕하세요! 작은 인사를 준비했습니다. 소리를 켜고 카드를 열어 주세요:"},{"c":"ky","n":"Кыргызча","en":"Kyrgyz","tts":"ky-KG","s":"cyr","tap":"ачуу үчүн басыңыз","you":"сага","open":"{name}, бул {сага|Сизге}","again":"кайра ойнотуу","ai":"ЖИ менен түзүлгөн","subj":"{name}, {sender} тарабынан {сага|Сизге} куттуктоо","intro":"Саламатсызбы, {name}! {Сага|Сизге} кичинекей куттуктоо бар. Үндү күйгүзүп, открыткани ачыңыз:"},{"c":"ln","n":"Lingála","en":"Lingala","tts":"fr-FR","s":"lat","tap":"finá mpo na kofungola","you":"mpo na yo","open":"{name}, oyo ezali mpo na yo","again":"bɛtá lisusu","ai":"Esalemi na AI","subj":"{name}, mbote epai ya {sender}","intro":"Mbote {name}! Tozali na mbote moke mpo na yo. Fungolá lolaka mpe fungolá karte:"},{"c":"lb","n":"Lëtzebuergesch","en":"Luxembourgish","tts":"de-LU","s":"lat","tap":"tippen fir opzemaachen","you":"fir dech","open":"{name}, dat hei ass fir {dech|Iech}","again":"nach eng Kéier","ai":"Mat KI gemaach","subj":"{name}, e Gruss fir {dech|Iech} vum {sender}","intro":"{Moien|Gudde Moien} {name}, mir hunn e klenge Gruss fir {dech|Iech}. Maacht den Toun un a maacht d'Kaart op:"},{"c":"mk","n":"Македонски","en":"Macedonian","tts":"mk-MK","s":"cyr","tap":"допри за да отвориш","you":"за тебе","open":"{name}, ова е за {тебе|Вас}","again":"пушти повторно","ai":"Создадено со ВИ","subj":"{name}, честитка за {тебе|Вас} од {sender}","intro":"{Здраво|Почитувани}, {name}! Имаме мала честитка за {тебе|Вас}. {Вклучи го звукот и отвори|Вклучете го звукот и отворете} ја честитката:"},{"c":"ms","n":"Bahasa Melayu","en":"Malay","tts":"ms-MY","s":"lat","tap":"ketik untuk membuka","you":"untuk anda","open":"{name}, ini untuk anda","again":"main semula","ai":"Dicipta dengan AI","subj":"{name}, ucapan untuk anda daripada {sender}","intro":"Hai {name}! Kami ada ucapan kecil untuk anda. Hidupkan bunyi dan buka kad ini:"},{"c":"ml","n":"മലയാളം","en":"Malayalam","tts":"ml-IN","s":"ml","tap":"തുറക്കാൻ ടാപ്പ് ചെയ്യുക","you":"നിങ്ങൾക്കായി","open":"{name}, ഇത് നിങ്ങൾക്കായി","again":"വീണ്ടും പ്ലേ ചെയ്യുക","ai":"AI ഉപയോഗിച്ച് നിർമ്മിച്ചത്","subj":"{name}, {sender}-ൽ നിന്ന് നിങ്ങൾക്ക് ആശംസ","intro":"നമസ്കാരം {name}! നിങ്ങൾക്കായി ഒരു ചെറിയ ആശംസയുണ്ട്. ശബ്ദം ഓണാക്കി കാർഡ് തുറക്കൂ:"},{"c":"mr","n":"मराठी","en":"Marathi","tts":"mr-IN","s":"deva","tap":"उघडण्यासाठी टॅप करा","you":"तुमच्यासाठी","open":"{name}, हे तुमच्यासाठी आहे","again":"पुन्हा वाजवा","ai":"AI ने तयार केले","subj":"{name}, {sender} कडून तुमच्यासाठी शुभेच्छा","intro":"नमस्कार {name}! तुमच्यासाठी एक छोटीशी शुभेच्छा आहे. आवाज सुरू करा आणि कार्ड उघडा:"},{"c":"ne","n":"नेपाली","en":"Nepali","tts":"ne-NP","s":"deva","tap":"खोल्न ट्याप गर्नुहोस्","you":"तपाईंका लागि","open":"{name}, यो तपाईंका लागि हो","again":"फेरि बजाउनुहोस्","ai":"AI द्वारा बनाइएको","subj":"{name}, {sender} बाट तपाईंलाई शुभकामना","intro":"नमस्ते {name}! तपाईंका लागि एउटा सानो शुभकामना छ। आवाज खोल्नुहोस् र कार्ड खोल्नुहोस्:"},{"c":"no","n":"Norsk","en":"Norwegian","tts":"nb-NO","s":"lat","tap":"trykk for å åpne","you":"til deg","open":"{name}, dette er til deg","again":"spill av igjen","ai":"Laget med KI","subj":"{name}, en hilsen til deg fra {sender}","intro":"Hei {name}! Vi har en liten hilsen til deg. Slå på lyden og åpne kortet:"},{"c":"ps","n":"پښتو","en":"Pashto","tts":"ps-AF","s":"ar","tap":"د خلاصولو لپاره ټک وکړئ","you":"ستاسو لپاره","open":"{name}، دا ستاسو لپاره ده","again":"بیا غږول","ai":"د AI په مرسته جوړ شوی","rtl":1,"subj":"{name}، د {sender} له خوا تاسو ته مبارکي","intro":"سلام {name}! موږ تاسو ته یو کوچنی مبارکي لرو. غږ چالان کړئ او کارت خلاص کړئ:"},{"c":"fa","n":"فارسی","en":"Persian","tts":"fa-IR","s":"ar","tap":"برای باز کردن ضربه بزنید","you":"برای تو","open":"{name}، این برای {توست|شماست}","again":"پخش دوباره","ai":"ساخته‌شده با هوش مصنوعی","rtl":1,"subj":"{name}، تبریکی از طرف {sender} برای {تو|شما}","intro":"سلام {name}! یک تبریک کوچک برای {تو|شما} داریم. صدا را روشن کنید و کارت را باز کنید:"},{"c":"pl","n":"Polski","en":"Polish","tts":"pl-PL","s":"lat","tap":"dotknij, aby otworzyć","you":"dla Ciebie","open":"{name}, to dla {Ciebie|Państwa}","again":"odtwórz ponownie","ai":"Stworzone przy użyciu AI","subj":"{name}, pozdrowienia od {sender}","intro":"{Cześć|Dzień dobry}, {name}! Mamy dla {Ciebie|Państwa} małe pozdrowienia. {Włącz dźwięk i otwórz|Prosimy włączyć dźwięk i otworzyć} kartkę:"},{"c":"pt","n":"Português","en":"Portuguese","tts":"pt-PT","s":"lat","tap":"toque para abrir","you":"para ti","open":"{name}, isto é para {ti|si}","again":"ver outra vez","ai":"Criado com IA","subj":"{name}, uma saudação da {sender}","intro":"Olá, {name}! Temos uma pequena saudação para {ti|si}. Ligue o som e abra o cartão:"},{"c":"pa","n":"ਪੰਜਾਬੀ","en":"Punjabi","tts":"pa-IN","s":"pa","tap":"ਖੋਲ੍ਹਣ ਲਈ ਟੈਪ ਕਰੋ","you":"ਤੁਹਾਡੇ ਲਈ","open":"{name}, ਇਹ ਤੁਹਾਡੇ ਲਈ ਹੈ","again":"ਮੁੜ ਚਲਾਓ","ai":"AI ਨਾਲ ਬਣਾਇਆ","subj":"{name}, {sender} ਵੱਲੋਂ ਤੁਹਾਡੇ ਲਈ ਸ਼ੁਭਕਾਮਨਾਵਾਂ","intro":"ਸਤ ਸ੍ਰੀ ਅਕਾਲ {name}! ਤੁਹਾਡੇ ਲਈ ਇੱਕ ਛੋਟੀ ਜਿਹੀ ਸ਼ੁਭਕਾਮਨਾ ਹੈ। ਆਵਾਜ਼ ਚਾਲੂ ਕਰੋ ਅਤੇ ਕਾਰਡ ਖੋਲ੍ਹੋ:"},{"c":"ro","n":"Română","en":"Romanian","tts":"ro-RO","s":"lat","tap":"atinge pentru a deschide","you":"pentru tine","open":"{name}, asta e pentru {tine|dumneavoastră}","again":"redă din nou","ai":"Creat cu IA","subj":"{name}, o urare pentru {tine|dumneavoastră} de la {sender}","intro":"{Salut|Bună ziua}, {name}! Avem o mică urare pentru {tine|dumneavoastră}. {Pornește sunetul și deschide|Porniți sunetul și deschideți} felicitarea:"},{"c":"sr","n":"Srpski","en":"Serbian","tts":"sr-RS","s":"lat","tap":"dodirni za otvaranje","you":"za tebe","open":"{name}, ovo je za {tebe|Vas}","again":"pusti ponovo","ai":"Napravljeno uz pomoć VI","subj":"{name}, čestitka za {tebe|Vas} od {sender}","intro":"{Zdravo|Poštovani}, {name}! Imamo malu čestitku za {tebe|Vas}. {Uključi zvuk i otvori|Uključite zvuk i otvorite} čestitku:"},{"c":"sd","n":"سنڌي","en":"Sindhi","tts":"sd-PK","s":"ar","tap":"کولڻ لاءِ ٽيپ ڪريو","you":"توهان لاءِ","open":"{name}، هي توهان لاءِ آهي","again":"وري هلايو","ai":"AI سان ٺهيل","rtl":1,"subj":"{name}، {sender} پاران توهان لاءِ مبارڪباد","intro":"سلام {name}! توهان لاءِ هڪ ننڍي مبارڪباد آهي. آواز چالو ڪريو ۽ ڪارڊ کوليو:"},{"c":"sk","n":"Slovenčina","en":"Slovak","tts":"sk-SK","s":"lat","tap":"ťukni pre otvorenie","you":"pre Teba","open":"{name}, toto je pre {Teba|Vás}","again":"prehrať znova","ai":"Vytvorené pomocou AI","subj":"{name}, pozdrav pre {Teba|Vás} od {sender}","intro":"{Ahoj|Dobrý deň}, {name}! Máme pre {Teba|Vás} malý pozdrav. {Zapni zvuk a otvor|Zapnite zvuk a otvorte} pohľadnicu:"},{"c":"sl","n":"Slovenščina","en":"Slovenian","tts":"sl-SI","s":"lat","tap":"tapni za odpiranje","you":"zate","open":"{name}, to je za {tebe|vas}","again":"predvajaj znova","ai":"Ustvarjeno z UI","subj":"{name}, voščilo za {tebe|vas} od {sender}","intro":"{Živjo|Pozdravljeni}, {name}! Imamo majhno voščilo za {tebe|vas}. {Vklopi zvok in odpri|Vklopite zvok in odprite} voščilnico:"},{"c":"so","n":"Soomaali","en":"Somali","tts":"so-SO","s":"lat","tap":"taabo si aad u furto","you":"adiga","open":"{name}, kani waa adiga","again":"dib u shid","ai":"Waxaa lagu sameeyay AI","subj":"{name}, salaan ka timid {sender}","intro":"Salaan {name}! Waxaan kuu hayno salaan yar. Shid codka oo fur kaarka:"},{"c":"sw","n":"Kiswahili","en":"Swahili","tts":"sw-KE","s":"lat","tap":"gusa ili kufungua","you":"kwa ajili yako","open":"{name}, hii ni kwa ajili yako","again":"cheza tena","ai":"Imetengenezwa kwa AI","subj":"{name}, salamu kutoka {sender}","intro":"Habari {name}! Tuna salamu ndogo kwa ajili yako. Washa sauti na ufungue kadi:"},{"c":"sv","n":"Svenska","en":"Swedish","tts":"sv-SE","s":"lat","tap":"tryck för att öppna","you":"till dig","open":"{name}, det här är till dig","again":"spela igen","ai":"Skapad med AI","subj":"{name}, en hälsning till dig från {sender}","intro":"Hej {name}! Vi har en liten hälsning till dig. Slå på ljudet och öppna kortet:"},{"c":"ta","n":"தமிழ்","en":"Tamil","tts":"ta-IN","s":"ta","tap":"திறக்க தட்டவும்","you":"உங்களுக்காக","open":"{name}, இது உங்களுக்காக","again":"மீண்டும் இயக்கு","ai":"AI மூலம் உருவாக்கப்பட்டது","subj":"{name}, {sender} அனுப்பும் வாழ்த்து","intro":"வணக்கம் {name}! உங்களுக்காக ஒரு சிறிய வாழ்த்து உள்ளது. ஒலியை இயக்கி அட்டையைத் திறக்கவும்:"},{"c":"te","n":"తెలుగు","en":"Telugu","tts":"te-IN","s":"te","tap":"తెరవడానికి నొక్కండి","you":"మీ కోసం","open":"{name}, ఇది మీ కోసం","again":"మళ్లీ ప్లే చేయండి","ai":"AIతో రూపొందించబడింది","subj":"{name}, {sender} నుండి మీకు శుభాకాంక్షలు","intro":"నమస్కారం {name}! మీ కోసం ఒక చిన్న శుభాకాంక్ష ఉంది. సౌండ్ ఆన్ చేసి కార్డ్ తెరవండి:"},{"c":"th","n":"ไทย","en":"Thai","tts":"th-TH","s":"th","tap":"แตะเพื่อเปิด","you":"สำหรับคุณ","open":"{name} การ์ดนี้สำหรับคุณ","again":"เล่นอีกครั้ง","ai":"สร้างด้วย AI","subj":"{name} คำอวยพรจาก {sender}","intro":"สวัสดีคุณ{name} เรามีคำอวยพรเล็ก ๆ มาให้คุณ เปิดเสียงแล้วเปิดการ์ดได้เลย:"},{"c":"tr","n":"Türkçe","en":"Turkish","tts":"tr-TR","s":"lat","tap":"açmak için dokun","you":"senin için","open":"{name}, bu {senin|sizin} için","again":"tekrar oynat","ai":"Yapay zekâ ile oluşturuldu","subj":"{name}, {sender} tarafından {sana|size} bir tebrik","intro":"{Merhaba|Sayın} {name}, {senin|sizin} için küçük bir tebrikimiz var. {Sesi aç ve kartı aç|Lütfen sesi açıp kartı açın}:"},{"c":"uk","n":"Українська","en":"Ukrainian","tts":"uk-UA","s":"cyr","tap":"торкнися, щоб відкрити","you":"для тебе","open":"{name}, це для {тебе|Вас}","again":"ще раз","ai":"Створено за допомогою ШІ","subj":"{name}, для {тебе|Вас} привітання від {sender}","intro":"{Привіт|Добрий день}, {name}! У нас є для {тебе|Вас} невелике привітання. {Увімкни звук і відкрий|Увімкніть звук і відкрийте} листівку:"},{"c":"ur","n":"اردو","en":"Urdu","tts":"ur-PK","s":"ar","tap":"کھولنے کے لیے ٹیپ کریں","you":"آپ کے لیے","open":"{name}، یہ آپ کے لیے ہے","again":"دوبارہ چلائیں","ai":"AI سے تیار کردہ","rtl":1,"subj":"{name}، {sender} کی طرف سے آپ کے لیے مبارکباد","intro":"السلام علیکم {name}! آپ کے لیے ایک چھوٹی سی مبارکباد ہے۔ آواز آن کریں اور کارڈ کھولیں:"},{"c":"vi","n":"Tiếng Việt","en":"Vietnamese","tts":"vi-VN","s":"lat","tap":"chạm để mở","you":"dành cho bạn","open":"{name}, tấm thiệp này dành cho bạn","again":"phát lại","ai":"Được tạo bằng AI","subj":"{name}, lời chúc từ {sender}","intro":"Xin chào {name}! Chúng tôi có một lời chúc nhỏ dành cho bạn. Hãy bật âm thanh và mở thiệp:"},{"c":"cy","n":"Cymraeg","en":"Welsh","tts":"cy-GB","s":"lat","tap":"tapiwch i agor","you":"i ti","open":"{name}, mae hwn i {ti|chi}","again":"chwarae eto","ai":"Wedi'i greu gydag AI","subj":"{name}, cyfarchiad i {ti|chi} gan {sender}","intro":"Helo {name}! Mae gennym ni gyfarchiad bach i {ti|chi}. Trowch y sain ymlaen ac agorwch y cerdyn:"}];
+const STD_LANGS=['en','lv','ru','de','lt','et','es'];
+const LANGS=ALL_LANGS.filter(l=>STD_LANGS.includes(l.c)); /* active languages of this project */
+const LG=c=>ALL_LANGS.find(l=>l.c===c)||ALL_LANGS[0];
+/* fonts for scripts the theme fonts do not have (Google Fonts, loaded only when needed) */
+const SCRIPT_FONT={zh:['Noto Sans SC','Noto Serif SC'],ja:['Noto Sans JP','Noto Serif JP'],ko:['Noto Sans KR','Noto Serif KR'],th:['Noto Sans Thai','Noto Serif Thai'],
+ ar:['Noto Sans Arabic','Noto Naskh Arabic'],he:['Noto Sans Hebrew','Noto Serif Hebrew'],deva:['Noto Sans Devanagari','Noto Serif Devanagari'],beng:['Noto Sans Bengali','Noto Serif Bengali'],
+ gu:['Noto Sans Gujarati','Noto Serif Gujarati'],pa:['Noto Sans Gurmukhi','Noto Serif Gurmukhi'],ta:['Noto Sans Tamil','Noto Serif Tamil'],te:['Noto Sans Telugu','Noto Serif Telugu'],
+ kn:['Noto Sans Kannada','Noto Serif Kannada'],ml:['Noto Sans Malayalam','Noto Serif Malayalam'],ka:['Noto Sans Georgian','Noto Serif Georgian'],hy:['Noto Sans Armenian','Noto Serif Armenian'],
+ grk:['Noto Sans','Noto Serif'],cyr:['Noto Sans','Noto Serif']};
+function scriptFams(lang){const L=LG(lang);if(STD_LANGS.includes(L.c)&&L.s!=='cyr')return null;return SCRIPT_FONT[L.s]||['Noto Sans','Noto Serif'];}
+function scriptFontsURL(langs){const fams=new Set();langs.forEach(l=>{const f=scriptFams(l);if(f)f.forEach(x=>fams.add(x));});
+  if(!fams.size)return '';return 'https://fonts.googleapis.com/css2?'+[...fams].map(f=>'family='+f.replace(/ /g,'+')+':wght@400;500;700').join('&')+'&display=swap';}
+function spaced(){return ['lat','cyr','grk'].includes(LG(S.lang).s);} /* letter spacing only for scripts that allow it */
+function needsSeg(lang){return ['zh','ja','th'].includes(lang);}
+
+const LAY={
+  card:  {top:190,hsc:1,  head1:520,head2:400,fw:700,fh:470,fy:660,ay:1070,ar:260,ayF:1360,arF:190,sub:1480,subF:1640},
+  social:{top:250,hsc:0.8,head1:470,head2:380,fw:600,fh:380,fy:560,ay:880, ar:220,ayF:1135,arF:150,sub:1230,subF:1350}
+};
+
+const S={
+  theme:'A',lang:'en',caps:true,frame:'circle',ringC:'',motion:true,headFont:false,layout:'card',guide:false,logo:null,logoPos:'top',brand:false,bBg:'#0f2a44',bAcc:'#f2b134',
+  text:{
+    en:{top:'31 · 10',head:'Boo.',sub:'Imagine your Christmas greeting\nlike this.',
+        say:"Boo! Did I scare you? Relax, I'm just a cat with a message. This year your clients could get a greeting like this one: talking, in your colours, with your logo. Ask my human how."},
+    lv:{top:'31 · 10',head:'Bū.',sub:'Iedomājies savu Ziemassvētku\napsveikumu šādi.',
+        say:'Bū! Nobijies? Mierīgi, es esmu tikai kaķis ar ziņu. Šogad tavi klienti var saņemt tādu apsveikumu kā šis: runājošu, tavās krāsās, ar tavu logo. Pajautā manai saimniecei, kā.'}
+  },
+  pic:null,picMode:'none',avatar:'cat',photo:null,photo2:null,videoEl:null,
+  mouth:{x:.5,y:.68,s:.16},
+  voiceMode:'eleven',voice:{},fx:'normal',
+  music:null,mvol:.3,
+  sfx:null,sfxOpt:{when:'open',vol:0.8,at:0},   /* v2.9.37 one sound effect: on opening or after the voice */
+  rcp:{n:'',c:'',f:false},   /* recipient: name, company, formal */
+  efx:[],   /* v2.9.33 Effects: moving parts (see EFX_LIB) */
+  slots:[],capStyle:'auto',capBg:'',capFg:'',tstyle:{},   /* v2.9.39 text styles */   /* v2.9.36 text/logo places, caption style */
+  aiLabel:false,realPerson:false,   /* AI disclosure: visible label on/off; real person's voice/face forces it on */
+  kind:'greeting',ghosts:true,demo:false,demoTxt:'Demo for {company}',   /* v2.9.14 */
+  ev:{date:'',time:'',end:'',place:'',map:'',show:true,rsvp:'message',mail:'',phone:'',wa:true,sms:true,form:'',by:''}
+};
+const EV_DEF=()=>({date:'',time:'',end:'',place:'',map:'',show:true,rsvp:'message',mail:'',phone:'',wa:true,sms:true,form:'',by:''});
+
+/* Personal text: {name}, {company}, {informal|formal}. Missing values are removed cleanly. */
+function PZ(s){
+  if(s==null)return '';
+  let r=String(s).replace(/\{([^{}|]*)\|([^{}]*)\}/g,(m,a,b)=>S.rcp.f?b:a);
+  const E='\u0000';
+  r=r.replace(/\{name\}/gi,(S.rcp.n||'').trim()||E).replace(/\{company\}/gi,(S.rcp.c||'').trim()||E).replace(/\{pet\}/gi,(S.rcp.p||'').trim()||E); /* v2.9.34 {pet} = the pet's name (Excel column pet_name) */
+  if(r.includes(E)){
+    r=r.split('\n').map(line=>{
+      if(!line.includes(E))return line;
+      const lead=line.trim().startsWith(E);
+      let x=line.replace(new RegExp('\\s*'+E+'\\s*,?','g'),' ').replace(/\s+([,.!?])/g,'$1').replace(/,+\s*([.!?]|$)/g,'$1').replace(/ {2,}/g,' ').trim();
+      if(lead&&x)x=x.charAt(0).toLocaleUpperCase()+x.slice(1);
+      return x;
+    }).join('\n');
+  }
+  /* any other {text} is shown without braces; always NFC so Baltic letters are never split into letter + mark */
+  return r.replace(/\{([^{}|]*)\}/g,'$1').normalize('NFC');
+}
+/* make sure the font files for the exact letters on the card are loaded before drawing
+   (otherwise Chrome may draw ā as a + a loose mark in the wrong place) */
+function textFontsSample(){const X=S.text[S.lang]||{},L=LG(S.lang);
+  return [X.top,X.head,X.sub,X.sign,X.say,X.open,L.tap,L.ai,L.you,L.again,S.rcp.n,S.rcp.c,'Bū ļ ā č ē ģ ī ķ ņ š ū ž Ą Č Ę Ė Į Š Ų Ū Ž õ ä ö ü ñ'].filter(Boolean).join(' ').normalize('NFC');}
+async function loadTextFonts(){try{
+  const T=S.brand?brandTheme(TH[S.theme]):TH[S.theme],t=textFontsSample();
+  const fs=[font(headTpl(T),60),font(T.body,60),font(T.top,60),withScript('600 60px Caveat, "Segoe Script", cursive'),withScript('500 32px Inter, Arial, sans-serif')];
+  Object.values(S.tstyle||{}).forEach(st=>{if(st&&st.font&&TSF[st.font])fs.push((st.it?'italic ':'')+(st.wt||'400')+' 60px '+TSF[st.font]);});
+  await Promise.race([Promise.all(fs.map(f=>document.fonts.load(f,t))),new Promise(ok=>setTimeout(ok,4000))]);}catch(e){}}
+
+/* own font for the big word (designer TTF/OTF); falls back to the theme font */
+function headTpl(T){if(!S.headFont)return T.head;const fb=T.head.replace(/^.*?px\s*/,'');return '400 {s}px "CardHead", '+fb;}
+async function loadHeadFont(url){try{if(!url){S.headFont=false;return;}const ff=new FontFace('CardHead','url('+url+')');await ff.load();document.fonts.add(ff);S.headFont=true;}catch(e){S.headFont=false;}}
+/* ---------- audio ---------- */
+let AC=null,DEST=null;
+function ac(){if(!AC){try{if(navigator.audioSession)navigator.audioSession.type='playback';}catch(e){}
+  AC=new (window.AudioContext||window.webkitAudioContext)();DEST=AC.createMediaStreamDestination?AC.createMediaStreamDestination():null;}return AC;}
+function applyFx(c,src,fx){
+  const rate={normal:1,higher:1.15,cat:1.32,deeper:0.84,robot:1}[fx]||1;
+  if(src.playbackRate)src.playbackRate.value=rate;
+  let out=src,extra=[];
+  if(fx==='higher'){const f=c.createBiquadFilter();f.type='highshelf';f.frequency.value=3000;f.gain.value=4;src.connect(f);out=f;}
+  if(fx==='cat'){const f=c.createBiquadFilter();f.type='highpass';f.frequency.value=380;src.connect(f);out=f;}
+  if(fx==='deeper'){const f=c.createBiquadFilter();f.type='lowshelf';f.frequency.value=250;f.gain.value=5;src.connect(f);out=f;}
+  if(fx==='robot'){const g=c.createGain();g.gain.value=0;const o=c.createOscillator();o.frequency.value=45;o.connect(g.gain);src.connect(g);o.start();out=g;extra.push(o);}
+  return {out,extra,rate};
+}
+async function fileToBuffer(file){return await ac().decodeAudioData(await file.arrayBuffer());}
+
+/* ---------- drawing helpers ---------- */
+function rnd(seed){return()=>{seed=(seed*16807)%2147483647;return(seed-1)/2147483646;};}
+const R1=rnd(7),STARS=Array.from({length:46},()=>({x:R1()*W,y:R1()*H,r:2+R1()*3,p:R1()*6}));
+const R2=rnd(11),SPECK=Array.from({length:700},()=>({x:R2()*W,y:R2()*H,r:.8+R2()*2.2}));
+const clamp=(v,a=0,b=1)=>Math.max(a,Math.min(b,v));
+function hexRgb(h){h=h.replace('#','');return[0,2,4].map(i=>parseInt(h.substr(i,2),16));}
+function lum(h){const[r,g,b]=hexRgb(h);return(0.299*r+0.587*g+0.114*b)/255;}
+function shade(h,a){const c=hexRgb(h).map(v=>Math.round(a>0?v+(255-v)*a:v*(1+a)));return'#'+c.map(v=>v.toString(16).padStart(2,'0')).join('');}
+function brandTheme(T0){
+  const bg=S.bBg,acc=S.bAcc,light=lum(bg)>0.55,fg=light?'#1d1a16':'#f3efe6',muted=light?'#5b554c':'#cfc9bc';
+  const av={...T0.av,ring:acc,mouth:acc};
+  if(S.theme==='A'){av.fill=bg;av.snout=bg;av.line=fg;av.eye=fg;av.ear=fg;}
+  return {...T0,bg,fg,muted,acc,cover:shade(bg,light?-0.08:-0.3),av};
+}
+function drawLogo(cx,cy,mw,mh){const L=S.logo;if(!L)return;const s=Math.min(mw/L.naturalWidth,mh/L.naturalHeight);const w=L.naturalWidth*s,h=L.naturalHeight*s;ctx.drawImage(L,cx-w/2,cy-h/2,w,h);}
+const ease=t=>1-Math.pow(1-t,3);
+
+/* EU AI Act art. 50: visible "Made with AI" label. Always on when a real person's voice or face is used
+   (deepfake disclosure, art. 50(4)); for a drawn character with an AI voice it can be switched off.
+   Machine-readable AI marks (web card meta, PNG, MP4, MP3) stay regardless. */
+function aiLabelOn(){return !!S.realPerson||S.aiLabel===true;}
+function aiUsed(){const v=S.vbytes&&S.vbytes[S.lang];return !!S.realPerson||S.avatar==='photo'||S.avatar==='video'||!!(v&&v.ai);}
+function aiLabel(T,y){if(!aiLabelOn())return;ctx.save();ctx.globalAlpha=0.8;ctx.fillStyle=T.muted;ctx.font=withScript('500 32px Inter, Arial, sans-serif');
+  if(ctx.letterSpacing!==undefined)ctx.letterSpacing=spaced()?'1px':'0px';ctx.textAlign='center';ctx.fillText('✦ '+LG(S.lang).ai,W/2,y);ctx.restore();}
+function wrap(text,maxW){
+  const out=[];
+  for(const para of String(text).split('\n')){
+    let cur='';
+    const seg=needsSeg(S.lang)&&typeof Intl!=='undefined'&&Intl.Segmenter;
+    const words=seg?[...new Intl.Segmenter(S.lang,{granularity:'word'}).segment(para)].map(x=>x.segment):para.split(' ');
+    for(const w of words){
+      const test=seg?cur+w:(cur?cur+' '+w:w);
+      if(ctx.measureText(test).width>maxW&&cur){out.push(seg?cur.trimEnd():cur);cur=seg?w.trimStart():w;}else cur=test;
+    }
+    out.push(cur);
+    if(seg)for(let i=1;i<out.length;i++){while(out[i]&&/^[。、，．！？）」』】〉》：；…ー]/.test(out[i])){out[i-1]+=out[i][0];out[i]=out[i].slice(1);}}
+  }
+  return out;
+}
+function drawCover(img,x,y,w,h){
+  const iw=img.videoWidth||img.naturalWidth,ih=img.videoHeight||img.naturalHeight;
+  if(!iw||!ih)return;
+  const s=Math.max(w/iw,h/ih),sw=w/s,sh=h/s;
+  ctx.drawImage(img,(iw-sw)/2,(ih-sh)/2,sw,sh,x,y,w,h);
+}
+function ghost(x,y,s,t){
+  ctx.save();ctx.translate(x,y+Math.sin(t*1.6+x)*14);ctx.scale(s,s);
+  ctx.fillStyle='#ffffff';ctx.beginPath();
+  ctx.arc(0,0,50,Math.PI,0);ctx.lineTo(50,70);
+  for(let i=0;i<4;i++){ctx.quadraticCurveTo(50-12.5-i*25,55+(i%2?15:-5)+10,25-i*25,70);}
+  ctx.lineTo(-50,0);ctx.fill();
+  ctx.fillStyle='#4b2a7a';ctx.beginPath();ctx.arc(-17,-5,7,0,7);ctx.arc(17,-5,7,0,7);ctx.fill();
+  ctx.restore();
+}
+
+function drawCat(cx,cy,r,P,lv,blink){
+  const h=r*0.62,hy=cy+r*0.12;
+  ctx.lineWidth=P.lw;ctx.strokeStyle=P.line;ctx.fillStyle=P.fill;ctx.lineJoin='round';
+  for(const sd of[-1,1]){
+    ctx.beginPath();
+    ctx.moveTo(cx+sd*h*0.88,hy-h*0.3);ctx.lineTo(cx+sd*h*0.72,hy-h*1.3);ctx.lineTo(cx+sd*h*0.2,hy-h*0.86);
+    ctx.closePath();ctx.fill();ctx.stroke();
+  }
+  ctx.beginPath();ctx.arc(cx,hy,h,0,Math.PI*2);ctx.fill();ctx.stroke();
+  ctx.fillStyle=P.eye;ctx.strokeStyle=P.eye;
+  for(const sd of[-1,1]){
+    if(blink){ctx.beginPath();ctx.moveTo(cx+sd*h*0.35-h*0.1,hy-h*0.08);ctx.lineTo(cx+sd*h*0.35+h*0.1,hy-h*0.08);ctx.stroke();}
+    else{ctx.beginPath();ctx.ellipse(cx+sd*h*0.35,hy-h*0.08,h*0.09,h*0.12,0,0,Math.PI*2);ctx.fill();}
+  }
+  ctx.fillStyle=P.mouth;ctx.beginPath();ctx.moveTo(cx-h*0.07,hy+h*0.16);ctx.lineTo(cx+h*0.07,hy+h*0.16);ctx.lineTo(cx,hy+h*0.25);ctx.fill();
+  ctx.beginPath();ctx.ellipse(cx,hy+h*0.45,h*0.15,h*0.025+lv*h*0.17,0,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle=P.line===P.fill?P.eye:P.line;ctx.lineWidth=Math.max(2,P.lw*0.5);
+  for(const sd of[-1,1])for(const k of[-1,1]){
+    ctx.beginPath();ctx.moveTo(cx+sd*h*0.3,hy+h*0.3+k*h*0.05);ctx.lineTo(cx+sd*h*0.95,hy+h*0.24+k*h*0.14);ctx.stroke();
+  }
+}
+function drawDog(cx,cy,r,P,lv,blink){
+  const h=r*0.6,hy=cy+r*0.1;
+  ctx.lineWidth=P.lw;ctx.strokeStyle=P.line;ctx.lineJoin='round';
+  ctx.fillStyle=P.ear;
+  for(const sd of[-1,1]){ctx.beginPath();ctx.ellipse(cx+sd*h*0.92,hy+h*0.05,h*0.28,h*0.6,sd*0.35,0,Math.PI*2);ctx.fill();ctx.stroke();}
+  ctx.fillStyle=P.fill;ctx.beginPath();ctx.ellipse(cx,hy,h*0.85,h*0.9,0,0,Math.PI*2);ctx.fill();ctx.stroke();
+  ctx.fillStyle=P.snout;ctx.beginPath();ctx.ellipse(cx,hy+h*0.35,h*0.42,h*0.3,0,0,Math.PI*2);ctx.fill();ctx.stroke();
+  ctx.fillStyle=P.eye;ctx.strokeStyle=P.eye;
+  for(const sd of[-1,1]){
+    if(blink){ctx.beginPath();ctx.moveTo(cx+sd*h*0.34-h*0.09,hy-h*0.15);ctx.lineTo(cx+sd*h*0.34+h*0.09,hy-h*0.15);ctx.stroke();}
+    else{ctx.beginPath();ctx.arc(cx+sd*h*0.34,hy-h*0.15,h*0.1,0,Math.PI*2);ctx.fill();}
+  }
+  ctx.beginPath();ctx.ellipse(cx,hy+h*0.22,h*0.13,h*0.09,0,0,Math.PI*2);ctx.fill();
+  const my=hy+h*0.48,mh=h*0.03+lv*h*0.16;
+  ctx.fillStyle=P.mouth;ctx.beginPath();ctx.ellipse(cx,my,h*0.16,mh,0,0,Math.PI*2);ctx.fill();
+  if(lv>0.35){ctx.fillStyle='#e8768a';ctx.beginPath();ctx.ellipse(cx,my+mh*0.55,h*0.09,mh*0.45,0,0,Math.PI*2);ctx.fill();}
+}
+
+
+/* ---------- v2.9.14: invitations (labels in the card language, details on the card, reply sheet on the web card) ---------- */
+const INV_L={
+ en:{calS:'Calendar',reply:'Reply',cal:'Add to calendar',map:'Map',yes:"I'm coming",no:"Can't come",maybe:'Maybe',msg:'Message (optional)',name:'Name',company:'Company',answer:'Answer',pick:'Please choose an answer first',by:'Please reply by',mail:'Send by e-mail',wa:'Send on WhatsApp',sms:'Send as SMS',close:'Close',google:'Google Calendar',ics:'Apple / Outlook calendar',note:'Your e-mail or phone app opens with the reply written in. Press Send there.'},
+ lv:{calS:'Kalendārā',reply:'Pieteikties',cal:'Pievienot kalendāram',map:'Karte',yes:'Būšu',no:'Nevarēšu',maybe:'Varbūt',msg:'Ziņa (nav obligāta)',name:'Vārds',company:'Uzņēmums',answer:'Atbilde',pick:'Lūdzu, vispirms izvēlieties atbildi',by:'Lūdzam atbildēt līdz',mail:'Sūtīt e-pastā',wa:'Sūtīt WhatsApp',sms:'Sūtīt SMS',close:'Aizvērt',google:'Google kalendārs',ics:'Apple / Outlook kalendārs',note:'Atvērsies jūsu e-pasta vai telefona lietotne ar gatavu atbildi. Tur nospiediet "Sūtīt".'},
+ ru:{calS:'Календарь',reply:'Ответить',cal:'В календарь',map:'Карта',yes:'Приду',no:'Не смогу',maybe:'Возможно',msg:'Сообщение (необязательно)',name:'Имя',company:'Компания',answer:'Ответ',pick:'Сначала выберите ответ',by:'Просим ответить до',mail:'Отправить по e-mail',wa:'Отправить в WhatsApp',sms:'Отправить SMS',close:'Закрыть',google:'Google Календарь',ics:'Календарь Apple / Outlook',note:'Откроется ваше почтовое или телефонное приложение с готовым ответом. Нажмите там «Отправить».'},
+ de:{calS:'Kalender',reply:'Antworten',cal:'Zum Kalender',map:'Karte',yes:'Ich komme',no:'Ich kann nicht',maybe:'Vielleicht',msg:'Nachricht (optional)',name:'Name',company:'Firma',answer:'Antwort',pick:'Bitte zuerst eine Antwort wählen',by:'Bitte antworten bis',mail:'Per E-Mail senden',wa:'Per WhatsApp senden',sms:'Als SMS senden',close:'Schließen',google:'Google Kalender',ics:'Apple- / Outlook-Kalender',note:'Ihre E-Mail- oder Telefon-App öffnet sich mit der fertigen Antwort. Drücken Sie dort auf Senden.'},
+ lt:{calS:'Kalendorius',reply:'Atsakyti',cal:'Į kalendorių',map:'Žemėlapis',yes:'Atvyksiu',no:'Negalėsiu',maybe:'Galbūt',msg:'Žinutė (neprivaloma)',name:'Vardas',company:'Įmonė',answer:'Atsakymas',pick:'Pirmiausia pasirinkite atsakymą',by:'Prašome atsakyti iki',mail:'Siųsti el. paštu',wa:'Siųsti per WhatsApp',sms:'Siųsti SMS',close:'Uždaryti',google:'Google kalendorius',ics:'Apple / Outlook kalendorius',note:'Atsidarys jūsų el. pašto ar telefono programėlė su paruoštu atsakymu. Ten paspauskite „Siųsti“.'},
+ et:{calS:'Kalender',reply:'Vasta',cal:'Lisa kalendrisse',map:'Kaart',yes:'Tulen',no:'Ei saa tulla',maybe:'Võib-olla',msg:'Sõnum (vabatahtlik)',name:'Nimi',company:'Ettevõte',answer:'Vastus',pick:'Valige kõigepealt vastus',by:'Palume vastata hiljemalt',mail:'Saada e-postiga',wa:'Saada WhatsAppis',sms:'Saada SMS',close:'Sulge',google:'Google’i kalender',ics:'Apple / Outlooki kalender',note:'Avaneb teie e-posti või telefoni rakendus valmis vastusega. Vajutage seal Saada.'},
+ es:{calS:'Calendario',reply:'Responder',cal:'Añadir al calendario',map:'Mapa',yes:'Asistiré',no:'No podré ir',maybe:'Quizás',msg:'Mensaje (opcional)',name:'Nombre',company:'Empresa',answer:'Respuesta',pick:'Primero elija una respuesta',by:'Por favor, respondan antes del',mail:'Enviar por e-mail',wa:'Enviar por WhatsApp',sms:'Enviar SMS',close:'Cerrar',google:'Google Calendar',ics:'Calendario Apple / Outlook',note:'Se abrirá su app de correo o del teléfono con la respuesta escrita. Pulse Enviar allí.'}
+};
+function invT(lang){return Object.assign({},INV_L.en,INV_L[lang]||{});}
+function fmtDate(iso,lang,noWd){if(!iso)return '';try{const d=new Date(iso+'T12:00:00');if(isNaN(d))return iso;let s=new Intl.DateTimeFormat(lang,noWd?{day:'numeric',month:'long'}:{weekday:'long',day:'numeric',month:'long'}).format(d);if(noWd)return s;return s.charAt(0).toLocaleUpperCase(lang)+s.slice(1);}catch(e){return iso;}}
+function evOn(){return S.kind==='invite'&&S.ev&&S.ev.show!==false;}
+function evLines(lang){
+  const E=S.ev||{},X=(S.text&&S.text[lang])||{},out=[];
+  if(E.date||E.time){let a=fmtDate(E.date,lang);const tm=(E.time||'')+(E.time&&E.end?'–'+E.end:'');if(tm)a=a?a+' · '+tm:tm;out.push(a);}
+  if(String(E.place||'').trim())out.push(String(E.place).trim());
+  const dr=PZ(X.dress||'').trim();if(dr)out.push(dr);
+  if(E.by&&out.length<3)out.push(invT(lang).by+' '+fmtDate(E.by,lang,1));
+  return out.slice(0,3);
+}
+function drawIV(lines,T,y0,lh,fs){
+  lines.forEach((l,i)=>{ctx.font=font(T.body,fs);ctx.fillStyle=i===0?T.acc:T.fg;
+    let s=l;while(s.length>4&&ctx.measureText(s).width>940)s=s.slice(0,-2);if(s!==l)s=s.trimEnd()+'…';
+    ctx.fillText(s,W/2,y0+i*lh);});
+}
+function icsEsc(s){return String(s||'').replace(/\\/g,'\\\\').replace(/\n/g,'\\n').replace(/([,;])/g,'\\$1');}
+function calRange(){
+  const E=S.ev||{},pad=n=>String(n).padStart(2,'0'),ymd=x=>x.getFullYear()+pad(x.getMonth()+1)+pad(x.getDate());
+  if(!E.time){const a=new Date(E.date+'T12:00:00'),b=new Date(a.getTime()+864e5);return {all:true,s:ymd(a),e:ymd(b)};}
+  const st=new Date(E.date+'T'+E.time+':00');let en=E.end?new Date(E.date+'T'+E.end+':00'):new Date(st.getTime()+3*36e5);if(en<=st)en=new Date(en.getTime()+864e5);
+  const f=x=>ymd(x)+'T'+pad(x.getHours())+pad(x.getMinutes())+'00';return {all:false,s:f(st),e:f(en)};
+}
+function initInvite(lang){ /* web card only: buttons under the card + reply / calendar sheets; no data leaves the guest's device except through their own app */
+  const E=S.ev||{},L=invT(lang),X=S.text[lang]||{},T=S.brand?brandTheme(TH[S.theme]):TH[S.theme];
+  const accTxt=lum(T.acc)>0.6?'#1d1a16':'#fff';
+  const st=document.createElement('style');
+  st.textContent='#inv{position:fixed;left:50%;transform:translateX(-50%);bottom:max(12px,env(safe-area-inset-bottom));display:flex;gap:8px;flex-wrap:nowrap;justify-content:center;width:min(94vw,520px);z-index:3;transition:opacity .5s}'
+   +'#inv.off{opacity:0;pointer-events:none}'
+   +'#inv button{white-space:nowrap;font-size:14px!important;padding:11px 14px!important}#inv button,.ivb{font:600 15px Inter,Arial,sans-serif;padding:11px 16px;border-radius:999px;border:0;background:#fff;color:#1d1a16;box-shadow:0 2px 10px rgba(0,0,0,.3);cursor:pointer}'
+   +'#inv .main,.ivb.main{background:'+T.acc+';color:'+accTxt+'}'
+   +'#ivs{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;justify-content:center;z-index:6}'
+   +'#ivs .box{background:#fff;color:#1d1a16;width:min(100vw,520px);max-height:90dvh;overflow:auto;border-radius:18px 18px 0 0;padding:20px 18px calc(22px + env(safe-area-inset-bottom));font:400 16px Inter,Arial,sans-serif;box-sizing:border-box}'
+   +'#ivs h3{margin:0 34px 12px 0;font:600 19px Inter,Arial,sans-serif}'
+   +'#ivs label{display:block;font-size:14px;color:#555;margin:12px 0 4px}'
+   +'#ivs input,#ivs textarea{width:100%;box-sizing:border-box;padding:11px 12px;border:1px solid #ccc;border-radius:10px;font:inherit;color:#1d1a16;background:#fff}'
+   +'#ivs textarea{min-height:72px;resize:vertical}'
+   +'.ivch{display:flex;gap:8px}.ivch button{flex:1;padding:13px 6px;border-radius:12px;border:2px solid #ddd;background:#fff;font:600 15px Inter,Arial,sans-serif;cursor:pointer;color:#1d1a16}'
+   +'.ivch button.on{border-color:'+T.acc+';background:'+hexA(T.acc,0.18)+'}'
+   +'.ivsend{display:flex;flex-direction:column;gap:8px;margin-top:16px}.ivsend .ivb{width:100%;padding:14px;font-size:16px;box-shadow:none;border:1px solid #ddd}'
+   +'.ivnote{font-size:13px;color:#666;margin:10px 0 0}.ivwarn{color:#b3261e;font-weight:600}'
+   +'.ivx{position:absolute;right:14px;top:10px;border:0;background:none;font-size:30px;line-height:1;cursor:pointer;color:#555}#ivs .box{position:relative}';
+  document.head.appendChild(st);
+  const wr=document.getElementById('wrap');if(wr){wr.style.bottom='68px';const cc=wr.querySelector('canvas');if(cc)cc.style.width='min(100vw,calc((100dvh - 68px)*0.5625))';} /* card sits above the buttons */
+  const ag=document.getElementById('again');if(ag){ag.style.bottom='auto';ag.style.top='max(12px,env(safe-area-inset-top))';}
+  const bar=document.createElement('div');bar.id='inv';bar.className='off';document.body.appendChild(bar);
+  const btn=(t,cls,fn)=>{const b=document.createElement('button');b.type='button';b.textContent=t;if(cls)b.className=cls;b.onclick=fn;return b;};
+  const head=PZ(X.head||'').replace(/\s*\n\s*/g,' ').replace(/-\s+/g,'-').trim();
+  const mode=E.rsvp||'message',phone=String(E.phone||'').replace(/[^\d+]/g,''),mail=String(E.mail||'').trim();
+  const place=String(E.place||'').trim();
+  function close(){const o=document.getElementById('ivs');if(o)o.remove();}
+  function sheet(title,build){close();const o=document.createElement('div');o.id='ivs';const b=document.createElement('div');b.className='box';
+    const x=btn('×','ivx',close);x.setAttribute('aria-label',L.close);const h=document.createElement('h3');h.textContent=title;b.append(x,h);build(b);o.appendChild(b);
+    o.addEventListener('click',e=>{if(e.target===o)close();});document.body.appendChild(o);}
+  function field(b,lab,val,multi){const l=document.createElement('label');l.textContent=lab;const i=document.createElement(multi?'textarea':'input');if(!multi)i.type='text';i.value=val||'';b.append(l,i);return i;}
+  function openReply(){
+    sheet(L.reply+(head?' · '+head:''),b=>{
+      let ans='';const ch=document.createElement('div');ch.className='ivch';
+      [L.yes,L.no,L.maybe].forEach(t=>{const c=btn(t,'',()=>{ans=t;warn.textContent='';ch.querySelectorAll('button').forEach(z=>z.classList.toggle('on',z===c));});ch.appendChild(c);});
+      b.appendChild(ch);
+      const warn=document.createElement('p');warn.className='ivnote ivwarn';b.appendChild(warn);
+      const nm=field(b,L.name,S.rcp.n||'');
+      const qs=String(X.rsvpQ||'').split('\n').map(q=>q.trim()).filter(Boolean).map(q=>[q,field(b,q,'')]);
+      const msg=field(b,L.msg,'',true);
+      if(E.by){const p=document.createElement('p');p.className='ivnote';p.textContent=L.by+' '+fmtDate(E.by,lang,1);b.appendChild(p);}
+      const body=()=>{const o=[];if(head)o.push(head+(E.date?' · '+fmtDate(E.date,lang):''));o.push(L.answer+': '+ans);
+        if(nm.value.trim())o.push(L.name+': '+nm.value.trim());if(S.rcp.c)o.push(L.company+': '+S.rcp.c);
+        qs.forEach(([q,i])=>{if(i.value.trim())o.push(q+': '+i.value.trim());});if(msg.value.trim())o.push('',msg.value.trim());return o.join('\n');};
+      const subj=()=>(head||L.reply)+': '+ans+(nm.value.trim()?' · '+nm.value.trim():'');
+      const ok=()=>{if(ans)return true;warn.textContent=L.pick;ch.scrollIntoView({behavior:'smooth',block:'center'});return false;};
+      const sb=document.createElement('div');sb.className='ivsend';
+      if(mail)sb.appendChild(btn('✉ '+L.mail,'ivb main',()=>{if(!ok())return;location.href='mailto:'+mail+'?subject='+encodeURIComponent(subj())+'&body='+encodeURIComponent(body());}));
+      if(phone&&E.wa!==false)sb.appendChild(btn(L.wa,'ivb'+(mail?'':' main'),()=>{if(!ok())return;window.open('https://wa.me/'+phone.replace(/\D/g,'')+'?text='+encodeURIComponent(subj()+'\n\n'+body()),'_blank','noopener');}));
+      if(phone&&E.sms!==false)sb.appendChild(btn(L.sms,'ivb',()=>{if(!ok())return;location.href='sms:'+phone+'?&body='+encodeURIComponent(subj()+'\n'+body());}));
+      b.appendChild(sb);const n=document.createElement('p');n.className='ivnote';n.textContent=L.note;b.appendChild(n);
+    });
+  }
+  function openCal(){
+    const R=calRange(),title=head||document.title,det=(PZ(X.dress||'').trim()+(E.by?'\n'+L.by+' '+fmtDate(E.by,lang,1):'')).trim()+'\n'+location.href.split('#')[0];
+    sheet(L.cal,b=>{const sb=document.createElement('div');sb.className='ivsend';
+      sb.appendChild(btn(L.google,'ivb main',()=>window.open('https://calendar.google.com/calendar/render?action=TEMPLATE&text='+encodeURIComponent(title)+'&dates='+R.s+'/'+R.e+'&location='+encodeURIComponent(place)+'&details='+encodeURIComponent(det),'_blank','noopener')));
+      sb.appendChild(btn(L.ics,'ivb',()=>{const dt=R.all?';VALUE=DATE':'',now=new Date().toISOString().replace(/[-:]/g,'').slice(0,15)+'Z';
+        const ics=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Greetvox//Talking Card//EN','CALSCALE:GREGORIAN','BEGIN:VEVENT','UID:'+R.s+'-'+Math.random().toString(36).slice(2)+'@greetvox','DTSTAMP:'+now,'DTSTART'+dt+':'+R.s,'DTEND'+dt+':'+R.e,'SUMMARY:'+icsEsc(title),place?'LOCATION:'+icsEsc(place):'','DESCRIPTION:'+icsEsc(det),'END:VEVENT','END:VCALENDAR'].filter(Boolean).join('\r\n');
+        const a=document.createElement('a');a.href='data:text/calendar;charset=utf-8,'+encodeURIComponent(ics);a.download='event.ics';document.body.appendChild(a);a.click();a.remove();}));
+      b.appendChild(sb);});
+  }
+  if(mode==='form'&&E.form)bar.appendChild(btn(L.reply,'main',()=>{const u=String(E.form).replace(/\{name\}/gi,encodeURIComponent(S.rcp.n||'')).replace(/\{company\}/gi,encodeURIComponent(S.rcp.c||''));window.open(u,'_blank','noopener');}));
+  else if(mode==='message'&&(mail||(phone&&(E.wa!==false||E.sms!==false))))bar.appendChild(btn(L.reply,'main',openReply));
+  if(E.date)bar.appendChild(btn(L.calS,'',openCal));
+  if(place||E.map)bar.appendChild(btn(L.map,'',()=>window.open(E.map||('https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(place)),'_blank','noopener')));
+  return {show:()=>{if(bar.children.length)bar.classList.remove('off');},bar};
+}
+
+/* ---------- v2.9.14: DEMO mark ---------- */
+function drawDemo(){
+  if(!S.demo)return;
+  ctx.save();ctx.globalAlpha=1;ctx.translate(W,0);ctx.rotate(Math.PI/4);
+  ctx.fillStyle='rgba(198,40,40,0.94)';ctx.fillRect(-460,150,920,100);
+  ctx.fillStyle='#fff';ctx.font='800 62px Inter, Arial, sans-serif';ctx.textAlign='center';if(ctx.letterSpacing!==undefined)ctx.letterSpacing='8px';
+  ctx.fillText('DEMO',0,223);ctx.restore();
+  const raw=String(S.demoTxt||''),t=(/\{company\}/i.test(raw)&&!String(S.rcp.c||'').trim())?'':PZ(raw).trim(); /* no company yet: ribbon only */
+  if(t){ctx.save();ctx.globalAlpha=1;ctx.font=withScript('600 34px Inter, Arial, sans-serif');ctx.textAlign='center';if(ctx.letterSpacing!==undefined)ctx.letterSpacing='0px';
+    let s=t;while(s.length>4&&ctx.measureText(s).width>700)s=s.slice(0,-2);if(s!==t)s+='…';
+    const w=ctx.measureText(s).width;ctx.fillStyle='rgba(198,40,40,0.94)';ctx.beginPath();ctx.roundRect(W/2-w/2-26,38,w+52,58,29);ctx.fill();
+    ctx.fillStyle='#fff';ctx.fillText(s,W/2,79);ctx.restore();}
+}
+
+/* ---------- v2.9.14: drawn Christmas characters + logo character ---------- */
+function star5(x,y,ro,ri,rot){ctx.beginPath();for(let i=0;i<10;i++){const r=i%2?ri:ro,a=rot-Math.PI/2+i*Math.PI/5;ctx[i?'lineTo':'moveTo'](x+Math.cos(a)*r,y+Math.sin(a)*r);}ctx.closePath();}
+function drawTree(cx,cy,r,P,lv,blink,t){
+  const top=cy-r*0.66,base=cy+r*0.66,Hh=base-top;
+  ctx.save();ctx.lineJoin='round';
+  ctx.fillStyle='#7a4a26';ctx.beginPath();ctx.roundRect(cx-r*0.1,base-r*0.04,r*0.2,r*0.2,6);ctx.fill();
+  const tiers=[[0.10,0.40,0.30],[0.30,0.68,0.50],[0.55,1.0,0.72]];
+  tiers.forEach(([a,b,w],k)=>{const y1=top+Hh*a,y2=top+Hh*b,hw=r*w;
+    const g=ctx.createLinearGradient(cx-hw,0,cx+hw,0);g.addColorStop(0,'#1f6b43');g.addColorStop(0.5,'#2f8f5a');g.addColorStop(1,'#1d5e3b');
+    ctx.fillStyle=g;ctx.beginPath();ctx.moveTo(cx,y1-(k?r*0.08:0));ctx.lineTo(cx+hw,y2);
+    let px=cx+hw;for(let i=3;i>=0;i--){const x=cx-hw+hw*2*i/4;ctx.quadraticCurveTo((px+x)/2,y2+r*0.07,x,y2);px=x;}
+    ctx.closePath();ctx.fill();ctx.strokeStyle='#174d31';ctx.lineWidth=4;ctx.stroke();});
+  /* garland */
+  ctx.strokeStyle='#e7c45a';ctx.lineWidth=5;ctx.beginPath();ctx.moveTo(cx-r*0.36,top+Hh*0.52);ctx.quadraticCurveTo(cx,top+Hh*0.62,cx+r*0.42,top+Hh*0.5);ctx.stroke();
+  /* ornaments (twinkle) */
+  const orn=[[-0.2,0.30,'#e2463c'],[0.22,0.26,'#3b8fe0'],[-0.42,0.62,'#e7c45a'],[0.44,0.60,'#e2463c'],[-0.56,0.94,'#3b8fe0'],[0.58,0.92,'#e7c45a'],[0.0,0.96,'#e2463c']];
+  orn.forEach(([x,y,c],i)=>{const tw=0.6+0.4*Math.sin(t*3+i*1.7);ctx.save();ctx.shadowColor=c;ctx.shadowBlur=14*tw;ctx.fillStyle=c;ctx.beginPath();ctx.arc(cx+x*r,top+Hh*y,r*0.055,0,7);ctx.fill();ctx.restore();
+    ctx.fillStyle='rgba(255,255,255,0.6)';ctx.beginPath();ctx.arc(cx+x*r-r*0.017,top+Hh*y-r*0.017,r*0.016,0,7);ctx.fill();});
+  /* star */
+  ctx.save();ctx.shadowColor='#ffd75a';ctx.shadowBlur=22+10*Math.sin(t*2.4);ctx.fillStyle='#ffd24a';star5(cx,top-r*0.02,r*0.15,r*0.065,Math.sin(t*0.8)*0.12);ctx.fill();ctx.restore();
+  /* face */
+  const fy=top+Hh*0.78,ex=r*0.15;
+  for(const sd of[-1,1]){
+    if(blink){ctx.strokeStyle='#10301f';ctx.lineWidth=5;ctx.beginPath();ctx.moveTo(cx+sd*ex-r*0.05,fy);ctx.lineTo(cx+sd*ex+r*0.05,fy);ctx.stroke();}
+    else{ctx.fillStyle='#fff';ctx.beginPath();ctx.ellipse(cx+sd*ex,fy,r*0.06,r*0.075,0,0,7);ctx.fill();ctx.fillStyle='#10301f';ctx.beginPath();ctx.arc(cx+sd*ex+r*0.008,fy+r*0.012,r*0.034,0,7);ctx.fill();
+      ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(cx+sd*ex+r*0.02,fy-r*0.008,r*0.011,0,7);ctx.fill();}
+    ctx.fillStyle='rgba(240,120,120,0.45)';ctx.beginPath();ctx.ellipse(cx+sd*r*0.27,fy+r*0.1,r*0.05,r*0.03,0,0,7);ctx.fill();
+  }
+  const my=fy+r*0.15;
+  if(lv<0.06){ctx.strokeStyle='#10301f';ctx.lineWidth=5;ctx.lineCap='round';ctx.beginPath();ctx.arc(cx,my-r*0.05,r*0.08,0.2*Math.PI,0.8*Math.PI);ctx.stroke();}
+  else{ctx.fillStyle='#5a1414';ctx.beginPath();ctx.ellipse(cx,my,r*0.09,r*0.02+lv*r*0.1,0,0,7);ctx.fill();}
+  if(lv>0.3){ctx.fillStyle='#e8768a';ctx.beginPath();ctx.ellipse(cx,my+(r*0.02+lv*r*0.1)*0.5,r*0.05,lv*r*0.04,0,0,7);ctx.fill();}
+  ctx.restore();
+}
+function drawSanta(cx,cy,r,P,lv,blink,t){
+  const f=r*0.34,fx=cx,fy=cy-r*0.08;
+  ctx.save();ctx.lineJoin='round';
+  /* beard (behind the face) */
+  ctx.fillStyle='#f4f1ec';ctx.strokeStyle='#d9d3c9';ctx.lineWidth=3;
+  const bump=[[-1.05,0.2,0.42],[-0.95,0.75,0.45],[-0.6,1.2,0.48],[0,1.45,0.52],[0.6,1.2,0.48],[0.95,0.75,0.45],[1.05,0.2,0.42],[-0.35,0.95,0.5],[0.35,0.95,0.5],[0,0.7,0.6]];
+  bump.forEach(([x,y,rr])=>{ctx.beginPath();ctx.arc(fx+x*f,fy+y*f,rr*f,0,7);ctx.fill();});
+  /* face */
+  ctx.fillStyle='#f3c7a2';ctx.beginPath();ctx.ellipse(fx,fy,f*0.92,f*0.86,0,0,7);ctx.fill();
+  /* hat */
+  const by=fy-f*0.68;ctx.fillStyle='#c7262c';ctx.beginPath();ctx.moveTo(fx-f*1.0,by);ctx.quadraticCurveTo(fx-f*0.7,fy-f*2.1,fx+f*0.25,fy-f*2.25);
+  ctx.quadraticCurveTo(fx+f*1.1,fy-f*2.05,fx+f*1.45,fy-f*1.25);ctx.quadraticCurveTo(fx+f*0.9,fy-f*1.6,fx+f*1.0,by);ctx.closePath();ctx.fill();
+  ctx.fillStyle='#a51c22';ctx.beginPath();ctx.moveTo(fx+f*0.25,fy-f*2.25);ctx.quadraticCurveTo(fx+f*1.1,fy-f*2.05,fx+f*1.45,fy-f*1.25);ctx.quadraticCurveTo(fx+f*1.0,fy-f*1.75,fx+f*0.25,fy-f*2.25);ctx.fill();
+  ctx.fillStyle='#f4f1ec';ctx.beginPath();ctx.arc(fx+f*1.45,fy-f*1.22+Math.sin(t*2)*f*0.03,f*0.24,0,7);ctx.fill();
+  ctx.beginPath();ctx.roundRect(fx-f*1.12,by-f*0.2,f*2.24,f*0.42,f*0.21);ctx.fill();ctx.strokeStyle='#d9d3c9';ctx.stroke();
+  /* eyes, brows, cheeks, nose */
+  const ey=fy-f*0.12;
+  for(const sd of[-1,1]){
+    ctx.fillStyle='#f4f1ec';ctx.beginPath();ctx.ellipse(fx+sd*f*0.36,ey-f*0.24,f*0.22,f*0.08,sd*-0.15,0,7);ctx.fill();
+    if(blink){ctx.strokeStyle='#3a2416';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(fx+sd*f*0.36-f*0.1,ey);ctx.lineTo(fx+sd*f*0.36+f*0.1,ey);ctx.stroke();}
+    else{ctx.fillStyle='#3a2416';ctx.beginPath();ctx.ellipse(fx+sd*f*0.36,ey,f*0.085,f*0.11,0,0,7);ctx.fill();ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(fx+sd*f*0.36+f*0.03,ey-f*0.04,f*0.03,0,7);ctx.fill();}
+    ctx.fillStyle='rgba(230,110,110,0.45)';ctx.beginPath();ctx.ellipse(fx+sd*f*0.6,fy+f*0.2,f*0.17,f*0.11,0,0,7);ctx.fill();
+  }
+  /* mouth (opens with the voice), then the moustache over it */
+  const my=fy+f*0.62,mh=f*0.05+lv*f*0.32;ctx.fillStyle='#6b1a1a';ctx.beginPath();ctx.ellipse(fx,my+mh*0.4,f*0.26,mh,0,0,7);ctx.fill();
+  if(lv>0.3){ctx.fillStyle='#e8768a';ctx.beginPath();ctx.ellipse(fx,my+mh*0.9,f*0.14,mh*0.35,0,0,7);ctx.fill();}
+  ctx.fillStyle='#f4f1ec';ctx.strokeStyle='#d9d3c9';ctx.lineWidth=3;
+  for(const sd of[-1,1]){ctx.beginPath();ctx.ellipse(fx+sd*f*0.3,fy+f*0.46,f*0.36,f*0.17,sd*-0.28,0,7);ctx.fill();ctx.stroke();}
+  ctx.fillStyle='#e9a184';ctx.beginPath();ctx.arc(fx,fy+f*0.26,f*0.16,0,7);ctx.fill();
+  ctx.restore();
+}
+function drawLogoChar(cx,cy,r,lv,T,ring){
+  ctx.save();ctx.fillStyle='#ffffff';ctx.beginPath();ctx.arc(cx,cy,r-8,0,7);ctx.fill();
+  if(lv>0.02){ctx.globalAlpha=Math.min(0.6,lv*0.9);ctx.strokeStyle=ring;ctx.lineWidth=10;ctx.beginPath();ctx.arc(cx,cy,r+14+lv*26,0,7);ctx.stroke();ctx.globalAlpha=1;}
+  const L=S.logo;
+  if(L&&L.naturalWidth){const z=1+lv*0.1,box=r*1.3*z,s=Math.min(box/L.naturalWidth,box/L.naturalHeight),w=L.naturalWidth*s,h=L.naturalHeight*s;
+    ctx.translate(cx,cy-lv*8);ctx.rotate(Math.sin(NOW()/1000*5)*lv*0.04);ctx.drawImage(L,-w/2,-h/2,w,h);}
+  else{ctx.fillStyle='#8a857a';ctx.font=font(T.body,40);ctx.textAlign='center';ctx.fillText(tr('Add a logo'),cx,cy+14);}
+  ctx.restore();
+}
+
+/* ---------- render ---------- */
+let level=0;
+/* jaw / two-picture mouth: opens on each syllable and closes between them (fast envelope minus slow average) */
+const JW={f:0,s:0,p:0.004,j:0,raw:0};
+function jawStep(raw,on){if(!on){JW.j*=0.7;JW.f*=0.7;JW.s*=0.9;return;}JW.f+=(raw-JW.f)*0.7;JW.s+=(raw-JW.s)*0.2;JW.p=Math.max(JW.p*0.997,JW.f,0.004);const jj=clamp((JW.f-0.6*JW.s)/(0.45*JW.p));JW.j+=(jj-JW.j)*0.85;}
+/* ---------- v2.9.11 Halloween effects: a foreground layer over the whole card (and the opening screen) ---------- */
+S.hfx=S.hfx||{};S.dripC=S.dripC||'#3d1d0c';
+const HFX=(()=>{let s=20261031;const R=()=>{s=(s*16807)%2147483647;return s/2147483647;};
+  return {
+    fog:Array.from({length:16},(_,i)=>({x:R()*W,y:0.30+R()*0.70,r:200+R()*280,sp:(14+R()*36)*(i%2?1:-1),a:0.07+R()*0.10,ph:R()*6})),
+    drips:Array.from({length:20},(_,i)=>{const x=(i+0.2+R()*0.6)/20*W,edge=x<W*0.16||x>W*0.84;return {x,w:16+R()*24,len:edge?180+R()*300:50+R()*(i%3===0?220:110),sp:0.45+R()*0.7,d:R()*0.9,fall:R()*6,edge};}), /* drawn behind the texts; longest at the sides */
+    bats:Array.from({length:7},(_,i)=>({y:140+R()*1100,s:0.55+R()*1.0,sp:170+R()*240,ph:R()*20,dir:i%2?1:-1,fl:7+R()*5})),
+    emb:Array.from({length:42},()=>({x:R()*W,sp:45+R()*95,r:2+R()*5,ph:R()*40,sw:10+R()*40})),
+    snow:Array.from({length:130},()=>({x:R()*W,y:R()*H,r:2+R()*R()*7,sp:40+R()*90,sw:10+R()*30,ph:R()*30})),
+    conf:Array.from({length:90},()=>({x:R()*W,y:R()*H,w:10+R()*12,h:5+R()*7,sp:110+R()*160,rs:(R()-0.5)*8,ph:R()*20,c:['#f2c14e','#e2463c','#3b8fe0','#5cc28a','#f28ac1','#ffffff'][Math.floor(R()*6)]})),
+    fw:Array.from({length:5},(_,i)=>({x:180+R()*720,y:260+R()*520,per:2.4+R()*1.4,off:i*0.9+R(),c:['#ffd24a','#ff6b6b','#7ec8ff','#9cf29c','#f6a8ff'][i%5]})),
+  };})();
+function hfxOn(){const h=S.hfx||{};return !!(h.glow||h.fog||h.drip||h.bats||h.ember||h.spider||h.snow||h.lights||h.confetti||h.fire);}
+function hexA(h,a){h=String(h||'#000').replace('#','');if(h.length===3)h=h.split('').map(c=>c+c).join('');const n=parseInt(h,16);return 'rgba('+(n>>16&255)+','+(n>>8&255)+','+(n&255)+','+a+')';}
+function shadeHex(h,f){h=String(h||'#000').replace('#','');if(h.length===3)h=h.split('').map(c=>c+c).join('');const n=parseInt(h,16);const c=v=>Math.max(0,Math.min(255,Math.round(f<0?v*(1+f):v+(255-v)*f)));return 'rgb('+c(n>>16&255)+','+c(n>>8&255)+','+c(n&255)+')';}
+function drawBat(x,y,s,flap,dir){
+  ctx.save();ctx.translate(x,y);ctx.scale(s*dir,s);const f=Math.sin(flap);
+  ctx.beginPath();ctx.moveTo(0,0);
+  ctx.quadraticCurveTo(-30,-40*f-6,-74,-22*f-4);ctx.quadraticCurveTo(-60,-6,-52,8);ctx.quadraticCurveTo(-40,0,-30,12);ctx.quadraticCurveTo(-18,4,0,16);
+  ctx.quadraticCurveTo(18,4,30,12);ctx.quadraticCurveTo(40,0,52,8);ctx.quadraticCurveTo(60,-6,74,-22*f-4);ctx.quadraticCurveTo(30,-40*f-6,0,0);ctx.closePath();
+  ctx.fillStyle='#120a18';ctx.shadowColor='rgba(255,130,30,0.85)';ctx.shadowBlur=14;ctx.fill();
+  ctx.beginPath();ctx.ellipse(0,6,9,13,0,0,7);ctx.fill();
+  ctx.beginPath();ctx.moveTo(-7,-4);ctx.lineTo(-4,-14);ctx.lineTo(-1,-5);ctx.moveTo(7,-4);ctx.lineTo(4,-14);ctx.lineTo(1,-5);ctx.fill();
+  ctx.restore();}
+function faceZone(){ /* v2.9.29: where the talking face is on the card (from the eye and mouth frames); falling effects fade out there */
+  if(S.picMode!=='art'||S.avatar!=='artTalk'||!S.pic)return null;const B=S.pic;let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+  for(const k of FR_KEYS){const r=S[k]&&partRect(S[k],B);if(r){x0=Math.min(x0,r.x);y0=Math.min(y0,r.y);x1=Math.max(x1,r.x+r.w);y1=Math.max(y1,r.y+r.h);}}
+  if(x1<0)return null;const iw=B.naturalWidth,ih=B.naturalHeight,sc=clamp(S.ats??1,0.5,1),w=W*sc,h=H*sc,x=(W-w)/2,y=(H-h)/2+(S.aty||0)*H,s=Math.max(w/iw,h/ih),ox=x+(w-iw*s)/2,oy=y+(h-ih*s)/2;
+  return {cx:ox+(x0+x1)/2*s,cy:oy+(y0+y1)/2*s,rx:Math.max(170,(x1-x0)*s*0.95),ry:Math.max(180,(y1-y0)*s*1.1)};}
+function fzA(z,x,y){if(!z)return 1;const d=((x-z.cx)/z.rx)**2+((y-z.cy)/z.ry)**2;return d>=1?1:clamp((d-0.55)/0.45);}
+function drawHFX(t,run,ts,layer){ /* layer 'back' = behind the texts and the character (drips, bats); 'front' = over everything (fog, sparks, spider, lightning) */
+  const h0=S.hfx||{};if(!hfxOn())return;
+  const h=layer==='back'?{drip:h0.drip,bats:h0.bats,fire:h0.fire}:{fog:h0.fog,ember:h0.ember,spider:h0.spider,flash:h0.bats,snow:h0.snow,lights:h0.lights,confetti:h0.confetti};
+  const fz=faceZone(),live=!!run,vt=run?ts+(run.hold||0):t; /* vt = seconds since the video started (or a clock in the still preview) */
+  ctx.save();ctx.globalAlpha=1;ctx.textAlign='center';
+  if(h.fog){
+    for(let i=0;i<HFX.fog.length;i++){const f=HFX.fog[i],span=W+f.r*2;
+      let x=((f.x+f.sp*t)%span+span)%span-f.r,y=f.y*H+Math.sin(t*0.35+f.ph)*28;
+      const g=ctx.createRadialGradient(x,y,0,x,y,f.r);g.addColorStop(0,'rgba(215,215,230,'+(f.a*0.8).toFixed(3)+')');g.addColorStop(1,'rgba(215,215,230,0)');
+      ctx.fillStyle=g;ctx.beginPath();ctx.ellipse(x,y,f.r*1.6,f.r*0.7,0,0,7);ctx.fill();}
+    const b=ctx.createLinearGradient(0,H*0.78,0,H);b.addColorStop(0,'rgba(210,210,225,0)');b.addColorStop(1,'rgba(210,210,225,0.22)');ctx.fillStyle=b;ctx.fillRect(0,H*0.78,W,H*0.22);
+  }
+  if(h.ember){
+    for(const e of HFX.emb){const yy=H+40-((vt*e.sp+e.ph*90)%(H+120)),xx=e.x+Math.sin(vt*0.9+e.ph)*e.sw;
+      const fl=0.55+0.45*Math.sin(vt*7+e.ph*3);ctx.fillStyle='rgba(255,'+(140+Math.round(60*fl))+',40,'+(0.35+0.5*fl).toFixed(2)+')';
+      ctx.globalAlpha=fzA(fz,xx,yy);ctx.shadowColor='rgba(255,120,20,0.9)';ctx.shadowBlur=16;ctx.beginPath();ctx.arc(xx,yy,e.r,0,7);ctx.fill();}
+    ctx.shadowBlur=0;ctx.globalAlpha=1;
+  }
+  if(h.bats){
+    for(const bt of HFX.bats){const span=W+400,x0=((vt*bt.sp+bt.ph*150)%span)-200,x=bt.dir>0?x0:W-x0;
+      drawBat(x,bt.y+Math.sin(vt*1.7+bt.ph)*40,bt.s,vt*bt.fl+bt.ph,bt.dir);}
+  }
+  if(h.flash){
+    /* lightning: at the moment the card opens in the video, then every ~7 s */
+    const ev=live&&run.mp4?[3.0,10,17]:[1.2,8,15],ph=((vt%22)+22)%22;let fl=0;
+    for(const e of ev){const d=ph-e;if(d>=0&&d<0.45)fl=Math.max(fl,(d<0.08?1:d<0.16?0.35:d<0.22?0.8:Math.max(0,1-(d-0.22)/0.23))*0.25);}
+    if(fl>0.01){ctx.fillStyle='rgba(225,225,255,'+fl.toFixed(3)+')';ctx.fillRect(0,0,W,H);
+      ctx.strokeStyle='rgba(255,255,255,'+Math.min(1,fl*1.8).toFixed(3)+')';ctx.lineWidth=5;ctx.shadowColor='#c8c8ff';ctx.shadowBlur=30;
+      ctx.beginPath();let bx=W*0.78,by=0;ctx.moveTo(bx,by);for(let k=0;k<7;k++){bx+=(k%2?-1:1)*(30+k*6);by+=70;ctx.lineTo(bx,by);}ctx.stroke();ctx.shadowBlur=0;}
+  }
+  if(h.spider){
+    const drop=live?ease(clamp(vt/1.6)):1,sy=(500+260*(0.5+0.5*Math.sin(t*0.7)))*drop+20,sx=W*0.9+Math.sin(t*1.1)*10; /* right side, between the big word and the character */
+    ctx.strokeStyle='rgba(235,235,245,0.75)';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(sx,0);ctx.lineTo(sx,sy-24);ctx.stroke();
+    ctx.save();ctx.translate(sx,sy);ctx.rotate(Math.sin(t*1.1)*0.08);
+    ctx.strokeStyle='#0d0d10';ctx.lineWidth=5;ctx.lineCap='round';ctx.shadowColor='rgba(255,140,40,0.9)';ctx.shadowBlur=12;
+    for(let k=0;k<4;k++){const a=0.35+k*0.32,w=Math.sin(t*6+k)*4;for(const sgn of[-1,1]){ctx.beginPath();ctx.moveTo(0,4);ctx.quadraticCurveTo(sgn*(36+k*4),-18+k*12+w,sgn*(56+k*6),12+k*16);ctx.stroke();}}
+    ctx.fillStyle='#0d0d10';ctx.beginPath();ctx.ellipse(0,10,26,30,0,0,7);ctx.fill();ctx.beginPath();ctx.arc(0,-22,16,0,7);ctx.fill();
+    ctx.shadowBlur=8;ctx.shadowColor='#ff7a1a';ctx.fillStyle='#ff8a2a';ctx.beginPath();ctx.arc(-6,-24,4,0,7);ctx.arc(6,-24,4,0,7);ctx.fill();
+    ctx.restore();
+  }
+  if(h.fire){ /* v2.9.14 fireworks: bursts that open, fade and fall a little */
+    for(const f of HFX.fw){const cyc=(vt+f.off)/f.per,k=Math.floor(cyc),p=cyc-k;if(p>0.75)continue;const q=p/0.75;
+      const sx=f.x+((k*137)%200)-100,sy=f.y+((k*71)%160)-80,R0=150+((k*53)%80);
+      if(q<0.18){const rq=q/0.18;ctx.fillStyle=f.c;ctx.globalAlpha=0.9*fzA(fz,sx,H-(H-sy)*rq);ctx.beginPath();ctx.arc(sx,H-(H-sy)*rq,5,0,7);ctx.fill();continue;}
+      const e=ease((q-0.18)/0.82);ctx.globalAlpha=Math.max(0,1-e);ctx.fillStyle=f.c;ctx.shadowColor=f.c;ctx.shadowBlur=14;
+      for(let i=0;i<34;i++){const a=i/34*Math.PI*2,d=R0*e,px=sx+Math.cos(a)*d,py=sy+Math.sin(a)*d+e*e*60;ctx.globalAlpha=Math.max(0,1-e)*fzA(fz,px,py);ctx.beginPath();ctx.arc(px,py,4*(1-e)+1.5,0,7);ctx.fill();}
+      ctx.shadowBlur=0;ctx.globalAlpha=1;}
+  }
+  if(h.snow){
+    for(const f of HFX.snow){const yy=((f.y+vt*f.sp)%(H+40))-20,xx=f.x+Math.sin(vt*0.8+f.ph)*f.sw;
+      const fa_=fzA(fz,xx,yy);if(fa_<0.02)continue;ctx.globalAlpha=fa_;ctx.fillStyle='rgba(255,255,255,'+(0.55+f.r/16).toFixed(2)+')';ctx.beginPath();ctx.arc(xx,yy,f.r,0,7);ctx.fill();}
+    ctx.globalAlpha=1;
+  }
+  if(h.confetti){
+    for(const c of HFX.conf){const yy=((c.y+vt*c.sp)%(H+60))-30,xx=c.x+Math.sin(vt*1.3+c.ph)*30;
+      const fa_=fzA(fz,xx,yy);if(fa_<0.02)continue;ctx.save();ctx.globalAlpha=fa_;ctx.translate(xx,yy);ctx.rotate(vt*c.rs+c.ph);ctx.scale(1,Math.abs(Math.cos(vt*3+c.ph))*0.8+0.2);ctx.fillStyle=c.c;ctx.fillRect(-c.w/2,-c.h/2,c.w,c.h);ctx.restore();}
+  }
+  if(h.lights){ /* fairy lights in three swags along the top */
+    const cols=['#ff5a4f','#ffd24a','#5cd68a','#5aa8ff'];let bi=0;
+    for(let sw=0;sw<3;sw++){const x0=sw*W/3,x1=x0+W/3,yt=28,sag=70;
+      ctx.strokeStyle='rgba(30,30,30,0.85)';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(x0,yt);ctx.quadraticCurveTo((x0+x1)/2,yt+sag*2,x1,yt);ctx.stroke();
+      for(let i=1;i<6;i++){const u=i/6,x=x0+(x1-x0)*u,y=yt+sag*2*2*u*(1-u),c=cols[bi%4],tw=0.45+0.55*Math.abs(Math.sin(vt*2.2+bi*1.3));bi++;
+        ctx.save();ctx.shadowColor=c;ctx.shadowBlur=26*tw;ctx.globalAlpha=0.55+0.45*tw;ctx.fillStyle=c;ctx.beginPath();ctx.ellipse(x,y+14,9,14,0,0,7);ctx.fill();ctx.restore();
+        ctx.fillStyle='#333';ctx.fillRect(x-5,y-2,10,8);}}
+  }
+  if(h.drip){
+    const C=S.dripC||'#3d1d0c',hi=shadeHex(C,0.35),dk=shadeHex(C,-0.45);
+    const grow=d=>live?ease(clamp((vt-d.d)*d.sp/1.4)):1;
+    ctx.fillStyle=C;ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(W,0);ctx.lineTo(W,26);
+    for(let x=W;x>=0;x-=40)ctx.quadraticCurveTo(x-20,26+10*Math.sin(x*0.05),x-40,26);ctx.closePath();
+    const bg=ctx.createLinearGradient(0,0,0,40);bg.addColorStop(0,dk);bg.addColorStop(1,C);ctx.fillStyle=bg;ctx.fill();
+    for(const d of HFX.drips){const L=26+d.len*grow(d)+Math.sin(t*1.3+d.x)*4,w=d.w,x=d.x;
+      const g=ctx.createLinearGradient(x-w/2,0,x+w/2,0);g.addColorStop(0,dk);g.addColorStop(0.35,C);g.addColorStop(0.55,hi);g.addColorStop(0.75,C);g.addColorStop(1,dk);
+      ctx.fillStyle=g;ctx.beginPath();ctx.moveTo(x-w/2,0);ctx.lineTo(x-w/2,L);ctx.arc(x,L,w/2,Math.PI,0,true);ctx.lineTo(x+w/2,0);ctx.closePath();ctx.fill();
+      ctx.beginPath();ctx.arc(x,L+w*0.1,w*0.62,0,7);ctx.fill();
+      ctx.fillStyle='rgba(255,255,255,0.28)';ctx.beginPath();ctx.ellipse(x-w*0.18,L-4,w*0.12,w*0.28,0,0,7);ctx.fill();
+      if((d.edge||d.len>150)&&grow(d)>=1){const p=((vt+d.fall)%3.2)/3.2,fy=L+w*0.6+p*p*H*0.9;if(fy<H){ctx.fillStyle=C;ctx.beginPath();ctx.ellipse(x,fy,w*0.32,w*0.42,0,0,7);ctx.fill();}}
+    }
+  }
+  ctx.restore();
+}
+
+/* ---------- v2.9.17: XO XO XO (drawn baubles) + eye frames (blink / wink) ---------- */
+const FR_KEYS=['eyeH','eyeC','winkH','winkC','mouthH','mouthO'];
+if(S.xoC===undefined)Object.assign(S,{xoC:'#c8102e',xoSnd:true,blink:true,gest:{},glow:false,gx:0.5,gy:0.6,ats:1,aty:0,tpos:{},sayOpen:false,saySign:false,atOpen:'slide',cuRing:'auto'});
+const XO={hits:[0.4,1.2,2.0],P:1.6,A0:0.30,m0:2.7,m1:3.9,start:1.2};
+const smoothK=k=>{k=clamp(k);return k*k*(3-2*k);};
+const easeBack=k=>{k=clamp(k);const c=1.9;return 1+(c+1)*Math.pow(k-1,3)+c*Math.pow(k-1,2);};
+function drawBauble(px,py,L,D,ang,col){ /* pivot (px,py), ball centre L below it */
+  const r=D/2;ctx.save();ctx.translate(px,py);ctx.rotate(ang);
+  ctx.strokeStyle='rgba(110,108,102,0.9)';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(0,L-r-12);ctx.stroke();
+  ctx.fillStyle='#c99a4e';ctx.beginPath();ctx.roundRect(-D*0.11,L-r-15,D*0.22,17,3);ctx.fill();
+  ctx.translate(0,L);
+  ctx.save();ctx.shadowColor='rgba(0,0,0,0.20)';ctx.shadowBlur=D*0.16;ctx.shadowOffsetX=D*0.05;ctx.shadowOffsetY=D*0.08;
+  const g=ctx.createRadialGradient(-r*0.35,-r*0.4,r*0.05,0,0,r);g.addColorStop(0,shade(col,0.42));g.addColorStop(0.38,col);g.addColorStop(1,shade(col,-0.5));
+  ctx.fillStyle=g;ctx.beginPath();ctx.arc(0,0,r,0,7);ctx.fill();ctx.restore();
+  ctx.save();ctx.beginPath();ctx.arc(0,0,r,0,7);ctx.clip();
+  ctx.fillStyle='#c99a4e';ctx.fillRect(-r,r*0.05,2*r,r*0.075);
+  const e=ctx.createRadialGradient(0,0,r*0.55,0,0,r);e.addColorStop(0,'rgba(0,0,0,0)');e.addColorStop(1,'rgba(0,0,0,0.32)');ctx.fillStyle=e;ctx.fillRect(-r,-r,2*r,2*r);
+  const sp=ctx.createRadialGradient(-r*0.38,-r*0.45,0,-r*0.38,-r*0.45,r*0.22);sp.addColorStop(0,'rgba(255,255,255,0.85)');sp.addColorStop(1,'rgba(255,255,255,0)');
+  ctx.fillStyle=sp;ctx.beginPath();ctx.ellipse(-r*0.38,-r*0.45,r*0.24,r*0.16,-0.5,0,7);ctx.fill();
+  ctx.restore();ctx.restore();
+}
+function drawXOXO(T,ay,run,ts,t,lv){
+  const col=S.xoC||'#c8102e',sc=S.layout==='card'?1:0.82;
+  const D=118*sc,gap=64*sc,L=330*sc,py=ay-L;
+  ctx.save();ctx.font=font(headTpl(T),Math.round(172*sc));ctx.textAlign='center';ctx.textBaseline='alphabetic';
+  const m=ctx.measureText('X'),XW=m.width,asc=m.actualBoundingBoxAscent||124*sc;
+  const pairW=XW+16*sc+D,total=3*pairW+2*gap,x0=(W-total)/2;
+  const xc=[0,1,2].map(i=>x0+i*(pairW+gap)+XW/2),fin=[0,1,2].map(i=>x0+i*(pairW+gap)+XW+16*sc+D/2),cra=[0,1,2].map(i=>W/2+(i-1)*D);
+  const xt=run?Math.max(0,ts-XO.start):99;
+  const pxAt=(i,x)=>cra[i]+(fin[i]-cra[i])*smoothK((x-XO.m0)/(XO.m1-XO.m0));
+  const angAt=i=>{let a=0;
+    if(xt<XO.m1){const env=xt<2.0?XO.A0:XO.A0*Math.exp(-(xt-2.0)*3),ph=((xt+XO.P/4)%XO.P)/XO.P;
+      if(i===0&&ph<0.5)a=env*Math.sin(2*Math.PI*ph);if(i===2&&ph>=0.5)a=-env*Math.sin(2*Math.PI*(ph-0.5));}
+    const h=1/30,acc=(pxAt(i,xt+h)-2*pxAt(i,xt)+pxAt(i,xt-h))/(h*h);a+=acc*0.0016*Math.PI/180;
+    if(xt>=XO.m1){const u=xt-XO.m1;a+=0.05*(i===1?-1:1)*Math.exp(-u*1.6)*Math.sin(5*u)+0.012*Math.sin(t*1.3+i*2.1)+lv*0.06*Math.sin(t*6+i*1.3);}
+    return a;};
+  for(let i=0;i<3;i++)drawBauble(pxAt(i,xt),py,L,D,angAt(i),col);
+  ctx.fillStyle=T.fg;const ga=ctx.globalAlpha;
+  XO.hits.forEach((h,k)=>{if(xt<h)return;const s=1.55-0.55*easeBack((xt-h)/0.38);
+    ctx.save();ctx.globalAlpha=ga*clamp((xt-h)/0.10);ctx.translate(xc[k],ay);ctx.scale(s,s);ctx.fillText('X',0,asc/2);ctx.restore();});
+  ctx.restore();
+}
+function tinkAt(c,out,when,f,g,run){ /* glass touch: three partials, short decay */
+  [[1,0.6],[1.5,0.3],[2,0.15]].forEach(([m,a])=>{const o=c.createOscillator(),gn=c.createGain();o.type='sine';o.frequency.value=f*m;
+    gn.gain.setValueAtTime(0,when);gn.gain.linearRampToValueAtTime(g*a,when+0.004);gn.gain.exponentialRampToValueAtTime(0.0001,when+0.7);
+    o.connect(gn);gn.connect(out);o.start(when);o.stop(when+0.75);if(run)run.nodes.push(o);});
+}
+function curGest(){const r=S.rcp&&S.rcp.gest;if(r)return r;const m=S.gest||{};return m[S.group]||m['*']||'none';}
+function winkU(run,ts){
+  if(S._gt){const u=(NOW()-S._gt)/1000-0.15;if(u<1.2)return u;S._gt=0;}
+  if(run&&curGest()==='wink')return ts-(run.vStart+run.vDur+0.35);
+  return null;}
+function eyeFrame(run,ts,t){
+  const u=S.winkC?winkU(run,ts):null;
+  if(u!=null&&u>=0&&u<0.69)return (u<0.04||u>=0.64)?(S.winkH||S.winkC):S.winkC;
+  if(S.blink!==false&&S.eyeC){const cyc=3.9,k=Math.floor(t/cyc),off=((Math.sin(k*12.9898)*43758.5453)%1+1)%1*1.4,v=t-k*cyc-off;
+    if(v>=0&&v<0.14)return (v<0.035||v>=0.105)?(S.eyeH||S.eyeC):S.eyeC;}
+  return null;}
+/* v2.9.19: movable texts. Each text block is drawn with its own offset; its box is recorded for dragging in the Studio */
+const TB={};let TBk=null;
+/* v2.9.40: shown on the web card after the tap while pictures and voices are still loading (LT/ET/ES need a native-speaker check) */
+const LOADTXT={en:'Loading',lv:'Ielādē',ru:'Загрузка',de:'Wird geladen',lt:'Įkeliama',et:'Laadimine',es:'Cargando'};
+function loadTxt(L){const n=1+Math.floor(performance.now()/380)%3;return (LOADTXT[L]||LOADTXT.en)+'.'.repeat(n)+'\u2007'.repeat(3-n);}
+/* v2.9.39 text style per text (S.tstyle[key]): font, weight, italic, CAPITALS + spacing, colour, light edge / dark shadow */
+const TSF={playfair:'"Playfair Display", Georgia, serif',crimson:'"Crimson Pro", Georgia, serif',inter:'Inter, Arial, sans-serif',nunito:'Nunito, Arial, sans-serif',caveat:'Caveat, "Segoe Script", cursive',own:'"CardHead", Georgia, serif'};
+function tsFont(cur,st){const m=String(cur).match(/^(.*?)(\d+(?:\.\d+)?)px\s+(.+)$/);if(!m)return cur;let pre=m[1],fam=m[3];
+  if(st.font&&TSF[st.font])fam=TSF[st.font];
+  if(st.wt||st.it!=null||st.font){const w=st.wt||((pre.match(/\b(\d{3}|bold)\b/)||[])[1])||'400';pre=(st.it?'italic ':'')+w+' ';}
+  return withScript(pre+m[2]+'px '+fam);}
+function tsPre(st){const sv={font:ctx.font,fs:ctx.fillStyle,ls:ctx.letterSpacing,sc:ctx.shadowColor,sb:ctx.shadowBlur,sy:ctx.shadowOffsetY,up:!!st.up};
+  ctx.font=tsFont(ctx.font,st);
+  if(st.col&&typeof ctx.fillStyle==='string'){const a=ctx.fillStyle.match(/rgba?\([^)]*,\s*([\d.]+)\)/);if(!a||+a[1]>0.85)ctx.fillStyle=st.col;}
+  if(st.ls&&ctx.letterSpacing!==undefined)ctx.letterSpacing=st.ls+'px';
+  if(st.fx){const z=+((ctx.font.match(/(\d+(?:\.\d+)?)px/)||[])[1]||40);ctx.shadowColor=st.fx==='light'?'rgba(255,252,245,0.95)':'rgba(0,0,0,0.55)';ctx.shadowBlur=Math.max(4,z*(st.fx==='light'?0.28:0.18));ctx.shadowOffsetY=st.fx==='dark'?Math.max(1,z*0.04):0;}
+  return sv;}
+function tsPost(sv){ctx.font=sv.font;ctx.fillStyle=sv.fs;if(ctx.letterSpacing!==undefined)ctx.letterSpacing=sv.ls;ctx.shadowColor=sv.sc;ctx.shadowBlur=sv.sb;ctx.shadowOffsetY=sv.sy;}
+(function(){const f=ctx.fillText.bind(ctx);const rec=function(s,x,y,mw){if(TBk&&s){const m=ctx.measureText(s),w=m.width,a=m.actualBoundingBoxAscent||30,d=m.actualBoundingBoxDescent||8,al=ctx.textAlign,x0=al==='center'?x-w/2:(al==='right'||al==='end')?x-w:x,tf=ctx.getTransform(),p0=tf.transformPoint({x:x0,y:y-a}),p1=tf.transformPoint({x:x0+w,y:y+d}),b=TB[TBk]||(TB[TBk]={x0:1e9,y0:1e9,x1:-1e9,y1:-1e9});
+  b.x0=Math.min(b.x0,p0.x,p1.x);b.y0=Math.min(b.y0,p0.y,p1.y);b.x1=Math.max(b.x1,p0.x,p1.x);b.y1=Math.max(b.y1,p0.y,p1.y);}return f(s,x,y,mw);};
+  ctx.fillText=function(s,x,y,mw){const st=TBk&&s&&S.tstyle&&S.tstyle[TBk];if(!st)return rec(s,x,y,mw);const sv=tsPre(st);try{return rec(sv.up?String(s).toLocaleUpperCase(S.lang):s,x,y,mw);}finally{tsPost(sv);}};})();
+function tpo(k){const o=S.tpos&&S.tpos[k];return o?{dx:o.dx||0,dy:o.dy||0}:{dx:0,dy:0};}
+const TN={}; /* v2.9.36: natural centre of each text block (for resizing) */
+function tblk(k,fn){const o=tpo(k),q=(S.tpos&&S.tpos[k])||{},sc=q.s||1,pv=TBk;ctx.save();ctx.translate(o.dx,o.dy);
+  if(sc!==1){const c=q.cx!=null?{x:q.cx,y:q.cy}:TN[k];if(c){ctx.translate(c.x,c.y);ctx.scale(sc,sc);ctx.translate(-c.x,-c.y);}}
+  TBk=k;try{fn();}finally{TBk=pv;ctx.restore();if(sc===1){const b=TB[k];if(b&&b.x1>b.x0)TN[k]={x:(b.x0+b.x1)/2-o.dx,y:(b.y0+b.y1)/2-o.dy};}}}
+function capBlk(fn){const so=tpo('sub');ctx.save();ctx.translate(-so.dx,-so.dy);tblk('cap',fn);ctx.restore();} /* captions do not follow the small text */
+/* v2.9.20: what the voice says = opening line (if ticked) + what the character says + signature (if ticked) */
+function namedClips(){return !!(S.names&&Object.keys(S.names.items||{}).length);}
+function sayParts(L,forVoice){const X=S.text[L]||{},parts=[],P={open:'',say:'',sign:''};
+  const pz=t=>{if(forVoice&&namedClips()){const r=S.rcp;S.rcp={...r,n:''};try{return PZ(t);}finally{S.rcp=r;}}return PZ(t);};
+  if(S.sayOpen){const o=pz(String(X.open!=null?X.open:LG(L).open).trim()).trim();if(o){const u=o.charAt(0).toLocaleUpperCase()+o.slice(1);P.open=/[.!?…:]$/.test(u)?u:u+'.';}}
+  P.say=String(X.say||'').trim();
+  if(S.saySign){let g=pz(String(X.sign||'').trim()).trim().replace(/^[—–-]\s*/,'');if(g){g=g.charAt(0).toLocaleUpperCase()+g.slice(1);P.sign=/[.!?…]$/.test(g)?g:g+'.';}}
+  return P;}
+function sayText(L,forVoice){const P=sayParts(L,forVoice);return [P.open,P.say,P.sign].filter(Boolean).join(' ');}
+function capHidden(page){ /* v2.9.22: a caption page that is only the spoken opening line or signature is not shown (those texts are on the card already) */
+  const n=x=>String(x||'').replace(/\[[^\]]*\]/g,' ').replace(/[^\p{L}\p{N}]+/gu,' ').trim().toLowerCase(),pg=n(page.join(' '));if(!pg)return true;const P=sayParts(S.lang);
+  return [P.open,P.sign].some(x=>{const q=n(x);return q&&(q===pg||q.includes(pg)||(pg.length>4&&q.endsWith(pg)));});}
+function capText(run){return ((run&&run.namePre)||'')+sayText(S.lang);}
+function joinVoice(a,b){const sr=b.sampleRate,gap=Math.round(0.18*sr),ch=Math.max(a.numberOfChannels,b.numberOfChannels),o=ac().createBuffer(ch,a.length+gap+b.length,sr);for(let c=0;c<ch;c++){const d=o.getChannelData(c);d.set(a.getChannelData(Math.min(c,a.numberOfChannels-1)),0);d.set(b.getChannelData(Math.min(c,b.numberOfChannels-1)),a.length+gap);}return o;}
+/* v2.9.18: whole picture talks */
+function partRect(fr,base){ /* where a frame differs from the base picture (cached) */
+  if(!fr||!base)return null;if(fr._rb===base&&fr._r!==undefined)return fr._r;
+  const iw=base.naturalWidth,ih=base.naturalHeight;if(!iw||fr.naturalWidth!==iw||fr.naturalHeight!==ih){fr._rb=base;fr._r=null;return null;}
+  const sw=Math.min(360,iw),sh=Math.round(ih*sw/iw),k=iw/sw,c1=document.createElement('canvas');c1.width=sw;c1.height=sh;const x1=c1.getContext('2d',{willReadFrequently:true});
+  x1.drawImage(base,0,0,sw,sh);const a=x1.getImageData(0,0,sw,sh).data;x1.clearRect(0,0,sw,sh);x1.drawImage(fr,0,0,sw,sh);const b=x1.getImageData(0,0,sw,sh).data;
+  let X0=sw,Y0=sh,X1=-1,Y1=-1;for(let y=0;y<sh;y++)for(let x=0;x<sw;x++){const i=(y*sw+x)*4;if(Math.abs(a[i]-b[i])+Math.abs(a[i+1]-b[i+1])+Math.abs(a[i+2]-b[i+2])>36){if(x<X0)X0=x;if(x>X1)X1=x;if(y<Y0)Y0=y;if(y>Y1)Y1=y;}}
+  const pad=4;fr._rb=base;fr._r=X1<0?null:{x:Math.max(0,(X0-pad)*k),y:Math.max(0,(Y0-pad)*k),w:Math.min(iw,(X1-X0+1+2*pad)*k),h:Math.min(ih,(Y1-Y0+1+2*pad)*k)};
+  if(fr._r){fr._r.w=Math.min(fr._r.w,iw-fr._r.x);fr._r.h=Math.min(fr._r.h,ih-fr._r.y);}return fr._r;}
+const MST={s:0};
+function mouthStep(m,half){ /* v2.9.29: drawn mouths switch cleanly: 0 closed, 1 half open, 2 open; a little hysteresis so they don't flicker */
+  let s=MST.s;
+  if(half){if(s===0){if(m>0.25)s=m>0.6?2:1;}else if(s===1){if(m>0.6)s=2;else if(m<0.15)s=0;}else{if(m<0.15)s=0;else if(m<0.45)s=1;}}
+  else s=s===0?(m>0.4?2:0):(m<0.25?0:2);
+  MST.s=s;return s;}
+function drawPart(img,r,x,y,w,h,al){ /* draws only rectangle r of img, placed as drawCover would place the whole picture */
+  if(!img||!r||al<=0.001)return;const iw=img.naturalWidth,ih=img.naturalHeight,s=Math.max(w/iw,h/ih),ox=x+(w-iw*s)/2,oy=y+(h-ih*s)/2;
+  const g=ctx.globalAlpha;ctx.globalAlpha=g*Math.min(1,al);ctx.drawImage(img,r.x,r.y,r.w,r.h,ox+r.x*s,oy+r.y*s,r.w*s,r.h*s);ctx.globalAlpha=g;}
+/* ---------- v2.9.33: Effects (moving parts) ----------
+   Library of effects. A new kind of movement = one more entry here + its drawing below.
+   Frame effects use pictures of the same size as the card picture where only one part changes (Studio draws only the changed part);
+   "swing" uses a transparent PNG layer that turns around the top of its chain and can carry a text ({name}). */
+const EFX_LIB={
+  loop:{n:'Loop (tail wags)',fr:2},
+  idle:{n:'Now and then (ears, a tree sways)',fr:2},
+  twinkle:{n:'Twinkle (lights)',fr:2},
+  swing:{n:'Swing in (name tag on a chain)',fr:1},
+  final:{n:'Final gesture (stays)',fr:2}
+};
+const EFX_ORDER={twinkle:0,loop:1,idle:2,final:3};
+/* v2.9.37 final gesture: A (in-between) → B (end pose) after the voice; B stays to the end */
+function efxEnd(run){return run?run.vStart+(run.vDur||0):null;}
+function finalU(e,run,ts){const tu=efxTestU(e);if(tu!=null)return tu;if(run){const ve=efxEnd(run);return ts-ve-(e.at??0.35);}return (!ui.studio&&S._finalDone)?99:-1;}
+function rectHit(a,b){return a&&b&&a.x<b.x+b.w&&b.x<a.x+a.w&&a.y<b.y+b.h&&b.y<a.y+a.h;}
+function efxPop(run,ts){let z=1;for(const e of (S.efx||[])){if(e.off||e.t!=='final'||e.pop===false||!S['efx_'+e.id+'_B'])continue;const u=finalU(e,run,ts)-(e.ms??100)/1000;if(u>0&&u<0.36)z=Math.max(z,1+0.03*Math.sin(Math.PI*u/0.36));}return z;}
+function efxKeys(){return (S.efx||[]).flatMap(e=>['efx_'+e.id+'_A','efx_'+e.id+'_B']);}
+function efxH(k,s){return ((Math.sin(k*12.9898+s*78.233)*43758.5453)%1+1)%1;}
+function efxSeed(e){let h=0;for(const c of String(e.id))h=(h*31+c.charCodeAt(0))%9973;return h/97;}
+function efxTestU(e){const T=S._efxT;if(T&&T.id===e.id){const u=(NOW()-T.at)/1000;if(u<4)return u;S._efxT=null;}return null;}
+function alphaBox(L){ /* where a transparent layer is not empty (cached) */
+  if(!L||!L.naturalWidth)return null;if(L._ab!==undefined)return L._ab;
+  const iw=L.naturalWidth,ih=L.naturalHeight,sw=Math.min(360,iw),sh=Math.round(ih*sw/iw),k=iw/sw,c=document.createElement('canvas');c.width=sw;c.height=sh;
+  const x=c.getContext('2d',{willReadFrequently:true});x.drawImage(L,0,0,sw,sh);const d=x.getImageData(0,0,sw,sh).data;
+  let X0=sw,Y0=sh,X1=-1,Y1=-1;for(let y=0;y<sh;y++)for(let xx=0;xx<sw;xx++){if(d[(y*sw+xx)*4+3]>12){if(xx<X0)X0=xx;if(xx>X1)X1=xx;if(y<Y0)Y0=y;if(y>Y1)Y1=y;}}
+  if(X1<0||(X1-X0+1)*(Y1-Y0+1)>sw*sh*0.9)return (L._ab=null); /* empty, or not a cut-out layer */
+  const p=2;return (L._ab={x:Math.max(0,(X0-p)*k),y:Math.max(0,(Y0-p)*k),w:Math.min(iw,(X1-X0+1+2*p)*k),h:Math.min(ih,(Y1-Y0+1+2*p)*k)});}
+function drawEfx(x,y,w,h,run,ts,t,lv,top){
+  const B=S.pic,list=(S.efx||[]).filter(e=>!e.off&&((e.t==='swing')===!!top)).sort((a,b)=>(EFX_ORDER[a.t]??3)-(EFX_ORDER[b.t]??3));
+  const done=list.filter(e=>e.t==='final'&&finalU(e,run,ts)>=0).map(e=>{const fa=S['efx_'+e.id+'_A'],fb=S['efx_'+e.id+'_B'];return [fa&&B?partRect(fa,B):null,fb&&B?partRect(fb,B):null];}).flat().filter(Boolean); /* zones taken by a final gesture */
+  for(const e of list){
+    const A=S['efx_'+e.id+'_A'],Bf=S['efx_'+e.id+'_B'];if(!A&&!(e.t==='final'&&Bf))continue;
+    if(e.t!=='final'&&done.length&&B){const r1=A?partRect(A,B):null,r2=Bf?partRect(Bf,B):null;if(done.some(d=>rectHit(d,r1)||rectHit(d,r2)))continue;}
+    if(e.t==='final'){const u=finalU(e,run,ts);if(u<0)continue;const d=(e.ms??100)/1000,pp=(im,al)=>{if(im)drawPart(im,partRect(im,B),x,y,w,h,al);};
+      if(u<d)pp(A||Bf,1);else pp(Bf||A,1);continue;} /* clean switches: a cross-fade would show the old and new pose at once */
+    if(e.t==='swing'){drawSwing(e,A,x,y,w,h,run,ts,t);continue;}
+    const sd=efxSeed(e),tu=efxTestU(e),part=(im,al)=>{if(im)drawPart(im,partRect(im,B),x,y,w,h,al==null?1:al);};
+    if(e.t==='loop'){
+      const per=(e.ms||140)/1000;let on;
+      if(tu!=null)on=tu<1.4;else if(e.when==='talk')on=!!(run&&run.speaking);
+      else if(e.when==='sometimes'){const cyc=e.gap||6,b=e.burst||1.1,k=Math.floor(t/cyc),v=t-k*cyc-efxH(k,sd)*Math.max(0,cyc-b);on=v>=0&&v<b;}
+      else on=true;
+      if(!on)continue;const ph=Math.floor((tu!=null?tu:t)/per)%2;part(ph?Bf:A);
+    }else if(e.t==='idle'){
+      const st=(e.ms||220)/1000,seq=Bf?[A,Bf,A]:[A];let v;
+      if(tu!=null)v=tu;else{const cyc=e.gap||6,k=Math.floor(t/cyc);v=t-k*cyc-efxH(k,sd)*cyc*0.6;}
+      const i=Math.floor(v/st);if(v>=0&&i<seq.length)part(seq[i]);
+    }else if(e.t==='twinkle'){
+      const per=(e.ms||1400)/1000;let a;
+      if(e.when==='voice')a=clamp((lv||0)*1.8);else{const q=0.5-0.5*Math.cos(2*Math.PI*((tu!=null?tu:t)+efxH(1,sd)*per)/per);a=e.hard?(q>0.5?1:0):q;}
+      if(Bf){part(A,1);part(Bf,a);}else part(A,a);
+    }
+  }
+}
+function drawSwing(e,L,x,y,w,h,run,ts,t){ /* the layer swings in from the side like a pendulum around the top of its chain, then settles; the name turns with it */
+  const bb=alphaBox(L);if(!bb)return;
+  const nm=PZ(e.txt??'{pet}').trim();if(!nm&&e.empty==='hide')return;
+  const iw=L.naturalWidth,ih=L.naturalHeight,s=Math.max(w/iw,h/ih),ox=x+(w-iw*s)/2,oy=y+(h-ih*s)/2;
+  const ab=e.px!=null,pxI=ab?e.px:bb.x+bb.w/2,pyI=ab?e.py:bb.y; /* v2.9.36: exact pivot and name place (picture pixels) */
+  const tcx=e.tcx!=null?e.tcx:bb.x+bb.w*(e.tx??0.5),tcy=e.tcy!=null?e.tcy:bb.y+bb.h*(e.ty??0.66);
+  const tmw=e.tmw!=null?e.tmw:bb.w*(e.tw??0.62),tfs=e.tfs!=null?e.tfs:bb.w*(e.tsz??0.22),tmin=e.tmin!=null?e.tmin:Math.max(8,tfs*0.45);
+  SB['tag:'+e.id]={x0:ox+(tcx-tmw/2)*s,y0:oy+(tcy-tfs*0.7)*s,x1:ox+(tcx+tmw/2)*s,y1:oy+(tcy+tfs*0.7)*s,eff:{px:pxI,py:pyI,tcx,tcy,tmw,tfs,tmin}};
+  const px=ox+pxI*s,py=oy+pyI*s;
+  const tu=efxTestU(e);let u;
+  if(tu!=null)u=tu;else if(run)u=ts-(1.0+(+e.at||0));else u=99; /* the card is open ~1 s after the start */
+  if(u<0)return;
+  const A0=(e.amp??35)*Math.PI/180*(e.side==='right'?-1:1),D=e.fD??2.4,Wf=e.fW??(2*Math.PI/0.8);
+  const ang=A0*Math.exp(-u*D)*Math.cos(Wf*u)+0.014*Math.sin(t*1.6)*Math.min(1,u/2.5);
+  ctx.save();ctx.globalAlpha*=clamp(u/0.12);ctx.translate(px,py);ctx.rotate(ang);ctx.translate(-px,-py);
+  ctx.drawImage(L,bb.x,bb.y,bb.w,bb.h,ox+bb.x*s,oy+bb.y*s,bb.w*s,bb.h*s);
+  if(nm){
+    const cx=ox+tcx*s,cy=oy+tcy*s,mw=tmw*s;let fs=Math.round(tfs*s);const mn=Math.max(6,Math.round(tmin*s));
+    const F=z=>withScript('700 '+z+'px "Playfair Display", Georgia, serif');
+    ctx.font=F(fs);while(fs>mn&&ctx.measureText(nm).width>mw){fs-=1;ctx.font=F(fs);} /* long names get smaller letters */
+    ctx.textAlign='center';ctx.textBaseline='middle';if('direction' in ctx)ctx.direction='ltr';if(ctx.letterSpacing!==undefined)ctx.letterSpacing='0px';
+    ctx.fillStyle='rgba(255,246,214,0.55)';ctx.fillText(nm,cx,cy+Math.max(1,fs*0.05)); /* light edge under the letters: engraved look */
+    ctx.fillStyle=e.tc||'#5b3a10';ctx.fillText(nm,cx,cy);
+  }
+  ctx.restore();
+}
+/* ---------- v2.9.36: text and logo places on the picture ("slots") ----------
+   Places are stored in the picture's own pixels (1080×1920 artwork), so they move and scale with the picture.
+   k: 'text' | 'logo' | 'auto' (the logo if one is loaded, otherwise the text). Text shrinks to fit its box (up to 2 lines). */
+let PICT=null;const SB={};
+function slotHead(){return (S.slots||[]).some(sl=>!sl.off&&sl.k!=='logo'&&/\{head\}/i.test(sl.txt||''));}
+function capSlot(){return (S.slots||[]).find(sl=>!sl.off&&sl.cap)||null;}
+function slotTxt(sl){return PZ(String(sl.txt||'').replace(/\{head\}/gi,(S.text[S.lang]||{}).head||'')).trim();}
+function slotLogo(){return !!S.logo&&(S.slots||[]).some(sl=>!sl.off&&(sl.k==='logo'||sl.k==='auto'));}
+function fitLines(txt,fam,wt,maxFs,minFs,bw,bh,maxL){
+  const words=txt.split(/\s+/).filter(Boolean);let fs=Math.max(minFs,Math.floor(maxFs));
+  for(;fs>=minFs;fs--){ctx.font=withScript(wt+' '+fs+'px '+fam);const lines=[];let cur='';
+    for(const w of words){const t=cur?cur+' '+w:w;if(ctx.measureText(t).width<=bw||!cur)cur=t;else{lines.push(cur);cur=w;}}if(cur)lines.push(cur);
+    if(lines.length<=maxL&&lines.every(l=>ctx.measureText(l).width<=bw)&&lines.length*fs*1.18<=bh)return {fs,lines};}
+  ctx.font=withScript(wt+' '+minFs+'px '+fam);return {fs:minFs,lines:[txt]};}
+function drawSlotText(txt,cx,cy,bw,bh,o){
+  if(!txt)return;const st=o.st||{};const fam=(st.font&&TSF[st.font])||o.fam,wt=(st.it?'italic ':'')+(st.wt||o.wt||'700');if(st.up)txt=String(txt).toLocaleUpperCase(S.lang);
+  ctx.save();if(ctx.letterSpacing!==undefined)ctx.letterSpacing=(st.ls||0)+'px';const R=fitLines(txt,fam,wt,o.fs,o.min||Math.max(10,o.fs*0.45),bw,bh,o.lines||2);
+  ctx.font=withScript(wt+' '+R.fs+'px '+fam);ctx.textAlign='center';ctx.textBaseline='middle';if('direction' in ctx)ctx.direction='ltr';
+  const lh=R.fs*1.18,y0=cy-(R.lines.length-1)*lh/2;
+  if(o.glow){ctx.shadowColor=o.glow;ctx.shadowBlur=Math.max(4,R.fs*0.25);}
+  if(st.fx){ctx.shadowColor=st.fx==='light'?'rgba(255,252,245,0.95)':'rgba(0,0,0,0.55)';ctx.shadowBlur=Math.max(4,R.fs*(st.fx==='light'?0.28:0.18));ctx.shadowOffsetY=st.fx==='dark'?Math.max(1,R.fs*0.04):0;}
+  ctx.fillStyle=st.col||o.color||'#222';R.lines.forEach((l,i)=>ctx.fillText(l,cx,y0+i*lh));ctx.restore();}
+function slotFam(sl){const T=S.brand?brandTheme(TH[S.theme]):TH[S.theme];const tpl=sl.font==='body'?T.body:T.head;const m=String(tpl).match(/\{s\}px\s+(.+)$/);return m?m[1]:'Georgia, serif';}
+function drawOneSlot(sl,P){
+  const x=P.ox+sl.x0*P.s,y=P.oy+sl.y0*P.s,w=(sl.x1-sl.x0)*P.s,h=(sl.y1-sl.y0)*P.s;
+  const useLogo=(sl.k==='logo'||sl.k==='auto')&&S.logo;
+  if(useLogo){const L=S.logo,pad=(sl.pad??20)*P.s,sc=Math.min((w-2*pad)/L.naturalWidth,(h-2*pad)/L.naturalHeight);if(sc>0){const lw=L.naturalWidth*sc,lh=L.naturalHeight*sc;ctx.drawImage(L,x+(w-lw)/2,y+(h-lh)/2,lw,lh);}return;}
+  if(sl.k==='logo')return;
+  drawSlotText(slotTxt(sl),x+w/2,y+h/2,w*0.96,h*0.96,{fam:slotFam(sl),wt:sl.wt||'700',fs:(sl.fs||44)*P.s,min:(sl.min||18)*P.s,color:sl.color||'#8c1c24',lines:sl.lines||2,st:S.tstyle&&S.tstyle['slot:'+sl.id]});
+}
+function drawSlots(P,run){
+  const capOn=!!(S.caps&&run&&run.speaking);
+  if(S.openView==='box'&&S.openBox&&ui.studio&&!run){const b=S.openBox;SB['open:box']={x0:P.ox+b.x0*P.s,y0:P.oy+b.y0*P.s,x1:P.ox+b.x1*P.s,y1:P.oy+b.y1*P.s};} /* v2.9.37 opening close-up box */
+  for(const sl of (S.slots||[])){
+    if(sl.off)continue;
+    const x=P.ox+sl.x0*P.s,y=P.oy+sl.y0*P.s;SB['slot:'+sl.id]={x0:x,y0:y,x1:x+(sl.x1-sl.x0)*P.s,y1:y+(sl.y1-sl.y0)*P.s};
+    if(sl.cap&&capOn)continue; /* drawn with the captions (its own text comes back in pauses) */
+    drawOneSlot(sl,P);
+  }
+}
+function drawArtTalk(x0,y0,w0,h0,run,ts,t,lv){ /* v2.9.37: a small bounce of the whole card when a final gesture lands */
+  const z=efxPop(run,ts);if(z===1)return drawArtTalk0(x0,y0,w0,h0,run,ts,t,lv);
+  const cx=x0+w0/2,cy=y0+h0/2;ctx.save();ctx.translate(cx,cy);ctx.scale(z,z);ctx.translate(-cx,-cy);try{drawArtTalk0(x0,y0,w0,h0,run,ts,t,lv);}finally{ctx.restore();}
+}
+function drawArtTalk0(x0,y0,w0,h0,run,ts,t,lv){
+  const B=S.pic;if(!B)return;const sc=clamp(S.ats??1,0.5,1),w=w0*sc,h=h0*sc,x=x0+(w0-w)/2,y=y0+(h0-h)/2+(S.aty||0)*h0;
+  if(sc<1||S.aty){ /* fill the free space by stretching the picture's own edges, so a smooth background continues */
+    const iw=B.naturalWidth,ih=B.naturalHeight,s=Math.max(w/iw,h/ih),ox=x+(w-iw*s)/2,oy=y+(h-ih*s)/2,pw=iw*s,ph=ih*s;
+    if(oy>y0)ctx.drawImage(B,0,0,iw,2,ox,y0,pw,oy-y0+1);
+    if(oy+ph<y0+h0)ctx.drawImage(B,0,ih-2,iw,2,ox,oy+ph-1,pw,y0+h0-(oy+ph)+1);
+    if(ox>x0){ctx.drawImage(B,0,0,2,ih,x0,oy,ox-x0+1,ph);ctx.drawImage(B,0,0,2,2,x0,y0,ox-x0+1,Math.max(0,oy-y0)+1);ctx.drawImage(B,0,ih-2,2,2,x0,oy+ph-1,ox-x0+1,Math.max(0,y0+h0-oy-ph)+1);}
+    if(ox+pw<x0+w0){const rx=ox+pw-1,rw=x0+w0-rx;ctx.drawImage(B,iw-2,0,2,ih,rx,oy,rw,ph);ctx.drawImage(B,iw-2,0,2,2,rx,y0,rw,Math.max(0,oy-y0)+1);ctx.drawImage(B,iw-2,ih-2,2,2,rx,oy+ph-1,rw,Math.max(0,y0+h0-oy-ph)+1);}
+  }
+  const zon=S.motion!==false&&run;let zoomed=false;
+  if(zon){ /* v2.9.27: the picture leans in a little with the voice, around the face */
+    run._lz=(run._lz||0)*0.88+lv*0.12;const f=faceBox(),iw=B.naturalWidth,ih=B.naturalHeight,s0=Math.max(w/iw,h/ih);
+    const fx=f?x+(w-iw*s0)/2+f.cx*s0:x+w/2,fy=f?y+(h-ih*s0)/2+f.cy*s0:y+h*0.4,z=1+0.035*clamp(run._lz*1.6)+0.006*Math.sin(t*0.9);
+    ctx.save();ctx.translate(fx,fy);ctx.scale(z,z);ctx.translate(-fx,-fy);zoomed=true;}
+  drawCover(B,x,y,w,h);
+  {const iw=B.naturalWidth,ih=B.naturalHeight,sc=Math.max(w/iw,h/ih);PICT={ox:x+(w-iw*sc)/2,oy:y+(h-ih*sc)/2,s:sc};}
+  drawEfx(x,y,w,h,run,ts,t,lv,false); /* v2.9.33 moving parts under the mouth and eyes */
+  const m=clamp(lv*1.7);
+  if(S.mouthO){const rO=partRect(S.mouthO,B);
+    if(S.mouthMix==='blend'){
+    if(S.mouthH){const rH=partRect(S.mouthH,B);if(m<0.5)drawPart(S.mouthH,rH,x,y,w,h,m*2);else{drawPart(S.mouthH,rH,x,y,w,h,1);drawPart(S.mouthO,rO,x,y,w,h,(m-0.5)*2);}}
+    else drawPart(S.mouthO,rO,x,y,w,h,m);}
+    else{const st=mouthStep(run?JW.j:0,!!S.mouthH);if(st===1)drawPart(S.mouthH,partRect(S.mouthH,B),x,y,w,h,1);else if(st===2)drawPart(S.mouthO,rO,x,y,w,h,1);}}
+  const ef=eyeFrame(run,ts,t);if(ef)drawPart(ef,partRect(ef,B),x,y,w,h,1);
+  drawEfx(x,y,w,h,run,ts,t,lv,true); /* v2.9.33 swinging layers on top */
+  drawSlots(PICT,run); /* v2.9.36 text and logo places */
+  if(S.glow){const gx=x+w*(S.gx??0.5),gy=y+h*(S.gy??0.6),R=w*0.24,a=0.06+lv*0.5;
+    ctx.save();ctx.globalCompositeOperation='lighter';const g=ctx.createRadialGradient(gx,gy,0,gx,gy,R);g.addColorStop(0,'rgba(255,196,96,'+a.toFixed(3)+')');g.addColorStop(1,'rgba(255,170,60,0)');ctx.fillStyle=g;ctx.fillRect(gx-R,gy-R,2*R,2*R);ctx.restore();}
+  if(S.glow&&ts>-0.2&&ts<1.6){ /* v2.9.27: a warm flash when the voice starts (the spoken name) */
+    const k=Math.exp(-Math.pow((ts-0.35)/0.45,2)),gx=x+w*(S.gx??0.5),gy=y+h*(S.gy??0.6),R=w*0.42;
+    ctx.save();ctx.globalCompositeOperation='lighter';const g=ctx.createRadialGradient(gx,gy,0,gx,gy,R);g.addColorStop(0,'rgba(255,214,140,'+(0.38*k).toFixed(3)+')');g.addColorStop(0.5,'rgba(255,180,80,'+(0.14*k).toFixed(3)+')');g.addColorStop(1,'rgba(255,170,60,0)');ctx.fillStyle=g;ctx.fillRect(gx-R,gy-R,2*R,2*R);ctx.restore();}
+  if(zoomed)ctx.restore();
+}
+function blurPic(){ /* soft, blurred copy of the picture for the opening screen (made once) */
+  const B=S.pic;if(!B)return null;if(B._bl&&B._blk===(S.ats??1)+'|'+(S.aty||0))return B._bl;
+  const c=document.createElement('canvas');c.width=270;c.height=480;const x=c.getContext('2d');const save=ctx;
+  const big=document.createElement('canvas');big.width=W;big.height=H;const bx=big.getContext('2d');
+  try{const g=window.ctx;}catch(e){}
+  bx.drawImage(B,0,0,W,H);x.filter='blur(14px)';x.drawImage(big,-20,-20,310,520);B._bl=c;B._blk=(S.ats??1)+'|'+(S.aty||0);return c;}
+function picAccent(){ /* the picture's own accent colour: bright, saturated pixels weigh most */
+  const B=S.pic;if(!B)return '#c99a4e';if(B._acc)return B._acc;
+  const w=64,h=Math.max(1,Math.round(64*B.naturalHeight/B.naturalWidth)),c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d',{willReadFrequently:true});x.drawImage(B,0,0,w,h);
+  const d=x.getImageData(0,0,w,h).data;let R=0,G=0,Bb=0,T=0,R2=0,G2=0,B2=0,T2=0;
+  for(let i=0;i<d.length;i+=4){const r=d[i]/255,g=d[i+1]/255,b=d[i+2]/255,mx=Math.max(r,g,b),mn=Math.min(r,g,b),sat=mx?(mx-mn)/mx:0;
+    if(mx>0.45&&sat>0.35){const k=sat*mx*mx*mx;R+=r*k;G+=g*k;Bb+=b*k;T+=k;}if(mx>0.7){R2+=r;G2+=g;B2+=b;T2++;}}
+  let r,g,b;if(T>0.5){r=R/T;g=G/T;b=Bb/T;}else if(T2){r=R2/T2;g=G2/T2;b=B2/T2;}else return (B._acc='#c99a4e');
+  const mx=Math.max(r,g,b)||1,f=Math.min(1/mx,1.25);r=Math.min(1,r*f);g=Math.min(1,g*f);b=Math.min(1,b*f);
+  return (B._acc='#'+[r,g,b].map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join(''));}
+function cuColour(){const v=S.cuRing||'auto';return v==='auto'?picAccent():v==='gold'?'#c99a4e':v==='white'?'#f2f0ea':v==='none'?'':v;}
+function faceBox(){ /* where the face is in the picture: chosen box (v2.9.37), else the eye and mouth frames; null = no face found */
+  const B=S.pic;if(!B)return null;
+  if(S.openView==='box'&&S.openBox){const b=S.openBox;return {cx:(b.x0+b.x1)/2,cy:(b.y0+b.y1)/2,sz:Math.max(20,b.x1-b.x0,b.y1-b.y0)};}
+  let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+  for(const k of FR_KEYS){const r=S[k]&&partRect(S[k],B);if(r){x0=Math.min(x0,r.x);y0=Math.min(y0,r.y);x1=Math.max(x1,r.x+r.w);y1=Math.max(y1,r.y+r.h);}}
+  const iw=B.naturalWidth,ih=B.naturalHeight;if(x1<0)return null; /* v2.9.37: no guessing (it gave an empty square of wall); the whole card is shown instead */
+  return {cx:(x0+x1)/2,cy:(y0+y1)/2+(y1-y0)*0.15,sz:Math.max(x1-x0,y1-y0)*2.3};}
+function drawCloseUp(cx,cy,cr,run,ts,t,lv,ring,noFrame){ /* v2.9.22: the character cut from the big picture, in a rounded square */
+  const B=S.pic;if(!B)return;const view=S.openView||'auto';if(view==='none')return;
+  const f=view==='card'?null:faceBox(),ats=S.ats,aty=S.aty;
+  if(!f){ /* the whole card, small, in its own shape */
+    const hh=2*cr*1.18,ww=hh*B.naturalWidth/B.naturalHeight,x=cx-ww/2,y=cy-hh/2;
+    ctx.save();ctx.beginPath();ctx.roundRect(x,y,ww,hh,28);ctx.clip();S.ats=1;S.aty=0;
+    try{drawArtTalk(x,y,ww,hh,run,ts,t,lv);}finally{S.ats=ats;S.aty=aty;}ctx.restore();
+    if(!noFrame){ctx.save();ctx.strokeStyle=ring||'rgba(255,255,255,0.6)';ctx.lineWidth=4;ctx.beginPath();ctx.roundRect(x,y,ww,hh,28);ctx.stroke();ctx.restore();}
+    return;}
+  const s=2*cr/f.sz;
+  ctx.save();ctx.beginPath();ctx.roundRect(cx-cr,cy-cr,2*cr,2*cr,40);ctx.clip();S.ats=1;S.aty=0;
+  try{drawArtTalk(cx-f.cx*s,cy-f.cy*s,B.naturalWidth*s,B.naturalHeight*s,run,ts,t,lv);}finally{S.ats=ats;S.aty=aty;}ctx.restore();
+  if(!noFrame){ctx.save();ctx.strokeStyle=ring||'rgba(255,255,255,0.6)';ctx.lineWidth=4;ctx.beginPath();ctx.roundRect(cx-cr,cy-cr,2*cr,2*cr,40);ctx.stroke();ctx.restore();}}
+function winkPop(run,ts){const u=S.winkC?winkU(run,ts):null;return (u!=null&&u>=0&&u<0.45)?1+0.03*Math.sin(Math.PI*smoothK(u/0.45)):1;}
+
+function render(t,run){
+  for(const k in TB)delete TB[k];for(const k in SB)delete SB[k];
+  const T=S.brand?brandTheme(TH[S.theme]):TH[S.theme],X=S.text[S.lang],P=T.av,Y=LAY[S.layout==='card'?'card':'social'];
+  const ts=run?(NOW()-run.t0)/1000:99;
+  const coverP=run?ease(clamp((ts-0.4)/0.8)):(ui.hold?0:1);
+  const fa=d=>run?(run.mp4?clamp((ts-d*0.6)/0.45):clamp((ts-d)/0.7)):1; /* v2.9.8 MP4: card parts appear faster, all visible ~0.2 s after the opening screen has gone */
+  const framed=S.picMode==='framed'&&S.pic;
+  ctx.globalAlpha=1;ctx.fillStyle=T.bg;ctx.fillRect(0,0,W,H);
+
+  const art=S.picMode==='art'&&S.pic;
+  if(art){if(S.avatar==='artTalk')drawArtTalk(0,0,W,H,run,ts,t,level);else drawCover(S.pic,0,0,W,H);}
+  if(S.picMode==='background'&&S.pic){drawCover(S.pic,0,0,W,H);ctx.globalAlpha=0.5;ctx.fillStyle=T.bg;ctx.fillRect(0,0,W,H);ctx.globalAlpha=1;}
+
+  if(!art){
+  if(S.theme==='A'){for(const s of STARS){ctx.globalAlpha=0.25+0.3*(0.5+0.5*Math.sin(t*1.5+s.p));ctx.fillStyle=T.fg;ctx.beginPath();ctx.arc(s.x,s.y,s.r,0,7);ctx.fill();}ctx.globalAlpha=1;}
+  if(S.theme==='B'){
+    ctx.fillStyle='#7a4a22';ctx.globalAlpha=0.07;for(const s of SPECK){ctx.beginPath();ctx.arc(s.x,s.y,s.r,0,7);ctx.fill();}
+    ctx.globalAlpha=1;ctx.fillStyle='#e0a24a';ctx.beginPath();ctx.arc(935,165,50,0,7);ctx.fill();
+    ctx.strokeStyle=T.muted;ctx.lineWidth=8;ctx.strokeRect(34,34,W-68,H-68);ctx.lineWidth=2.5;ctx.strokeRect(58,58,W-116,H-116);
+  }
+  if(S.theme==='D'){for(const s of STARS){ctx.globalAlpha=0.22+0.35*(0.5+0.5*Math.sin(t*1.3+s.p));ctx.fillStyle=T.acc;ctx.beginPath();ctx.arc(s.x,s.y,s.r*0.8,0,7);ctx.fill();}ctx.globalAlpha=1;
+    ctx.strokeStyle=T.acc;ctx.globalAlpha=0.55;ctx.lineWidth=3;ctx.strokeRect(40,40,W-80,H-80);ctx.lineWidth=1.5;ctx.strokeRect(56,56,W-112,H-112);ctx.globalAlpha=1;}
+  if(S.theme==='C'&&S.ghosts!==false){if(S.layout==='card'){ghost(130,760,0.9,t);ghost(950,700,0.75,t+2);ghost(130,1250,0.7,t+4);ghost(960,1180,0.6,t+1);}else{ghost(120,640,0.85,t);ghost(960,600,0.7,t+2);ghost(110,1040,0.65,t+4);ghost(975,1070,0.55,t+1);}}
+  }
+
+  drawHFX(t,run,ts,'back');ctx.globalAlpha=1;
+  ctx.textAlign='center';ctx.textBaseline='alphabetic';if('direction' in ctx)ctx.direction=LG(S.lang).rtl?'rtl':'ltr';
+  ctx.globalAlpha=fa(0.9);
+  ctx.fillStyle=S.theme==='C'?T.acc:T.muted;ctx.font=font(T.top,50);
+  if(ctx.letterSpacing!==undefined)ctx.letterSpacing=(spaced()?T.topSpace:0)+'px';
+  let logoBot=0;if(S.logo&&S.logoPos==='top'&&S.avatar!=='logo'&&!slotLogo()){const big=S.layout==='card',ly=big?Y.top-35:Y.top-25,lw=big?600:380,lh=big?140:110;drawLogo(W/2,ly,lw,lh);const L=S.logo,sc=Math.min(lw/L.naturalWidth,lh/L.naturalHeight);logoBot=ly+L.naturalHeight*sc/2;}else tblk('top',()=>ctx.fillText(PZ(X.top),W/2,Y.top)); /* v2.9.28: bigger logo in the Card layout */
+  if(ctx.letterSpacing!==undefined)ctx.letterSpacing='0px';
+
+  const hl=PZ(X.head).split('\n');
+  let hs=T.hs*Y.hsc*(hl.length>1?0.72:1);const HT=headTpl(T);ctx.font=font(HT,hs);
+  while(hs>70&&Math.max(...hl.map(l=>ctx.measureText(l).width))>930){hs-=6;ctx.font=font(HT,hs);}
+  ctx.fillStyle=T.fg;
+  let hTop=hl.length>1?Y.top+50+hs*0.8:Y.head1;
+  if(logoBot){const dy=((S.tpos||{}).head||{}).dy||0;hTop=Math.max(hTop,logoBot+40+hs*0.72-dy);} /* v2.9.28: the headline never touches the logo, even when moved up */
+  if(!(S.avatar==='artTalk'&&slotHead()))tblk('head',()=>{if(S.hfx&&S.hfx.glow){ctx.save();ctx.shadowColor=S.ringC||P.ring||'#ff8a2a';ctx.shadowBlur=28+14*Math.sin(t*2.2);hl.forEach((l,i)=>ctx.fillText(l,W/2,hTop+i*hs*0.95));ctx.restore();}else hl.forEach((l,i)=>ctx.fillText(l,W/2,hTop+i*hs*0.95));});
+  const headBottom=hTop+(hl.length-1)*hs*0.95+hs*0.24;
+
+  if(framed){
+    ctx.globalAlpha=fa(1.1);
+    const fw=Y.fw,fh=Y.fh,fx=(W-fw)/2,fy=Y.fy;
+    ctx.save();
+    if(S.theme==='C'){ctx.beginPath();ctx.roundRect(fx,fy,fw,fh,36);ctx.clip();}
+    drawCover(S.pic,fx,fy,fw,fh);ctx.restore();
+    if(S.theme==='A'){ctx.strokeStyle=T.fg;ctx.lineWidth=3;ctx.strokeRect(fx-14,fy-14,fw+28,fh+28);}
+    if(S.theme==='B'){ctx.strokeStyle='#fff8ec';ctx.lineWidth=18;ctx.strokeRect(fx,fy,fw,fh);ctx.strokeStyle=T.muted;ctx.lineWidth=3;ctx.strokeRect(fx-9,fy-9,fw+18,fh+18);}
+    if(S.theme==='C'){ctx.strokeStyle=T.acc;ctx.lineWidth=10;ctx.beginPath();ctx.roundRect(fx,fy,fw,fh,36);ctx.stroke();}
+  }
+
+  const MV=S.motion!==false,NOF=S.frame==='none';
+  const ay=framed?Y.ayF:Y.ay,ar=(framed?Y.arF:Y.ar)*(1+(MV?level*0.03:0));const RING=S.ringC||P.ring;
+  ctx.globalAlpha=fa(1.3);
+  const blink=(NOW()%4200)<140;
+  if(S.avatar==='xoxo'||S.avatar==='artTalk'||(NOF&&['photo','tree','santa'].includes(S.avatar))){}
+  else if(S.theme==='A'&&S.avatar!=='logo'){ctx.strokeStyle=RING;ctx.lineWidth=4;if(S.hfx&&S.hfx.glow){ctx.save();ctx.shadowColor=RING;ctx.shadowBlur=34+16*Math.sin(t*2.2);ctx.lineWidth=6;ctx.beginPath();ctx.arc(W/2,ay,ar,0,7);ctx.stroke();ctx.restore();}else{ctx.beginPath();ctx.arc(W/2,ay,ar,0,7);ctx.stroke();}}
+  else{ctx.fillStyle=S.brand?shade(T.bg,lum(T.bg)>0.55?-0.06:0.12):({A:shade(T.bg,0.08),B:'#e7d6b6',C:'#5d3a90',D:'#1c4a37'})[S.theme]||'#5d3a90';ctx.beginPath();ctx.arc(W/2,ay,ar,0,7);ctx.fill();ctx.strokeStyle=RING;ctx.lineWidth=6;ctx.stroke();}
+  if(S.avatar==='cat')drawCat(W/2,ay,ar,P,level,blink);
+  else if(S.avatar==='dog')drawDog(W/2,ay,ar,P,level,blink);
+  else if(S.avatar==='tree')drawTree(W/2,ay,ar,P,level,blink,t);
+  else if(S.avatar==='santa')drawSanta(W/2,ay,ar,P,level,blink,t);
+  else if(S.avatar==='xoxo')drawXOXO(T,ay,run,ts,t,level);
+  else if(S.avatar==='artTalk'){}
+  else if(S.avatar==='logo')drawLogoChar(W/2,ay,ar,level,T,RING);
+  else{
+    const src=S.avatar==='photo'?S.photo:S.videoEl;
+    ctx.save();if(!(NOF&&S.avatar==='photo')){ctx.beginPath();ctx.arc(W/2,ay,ar-6,0,7);ctx.clip();}
+    const mst=S.mouth.st||(S.mouth.on?'oval':'none');
+    if(src&&S.avatar==='photo'){ /* photo "talks": jaw, two pictures or a drawn mouth; zoom and tilt only when switched on */
+      const z=(MV?1.04+level*0.07:1)*winkPop(run,ts),tt=NOW()/1000,R0=ar*z;
+      ctx.save();ctx.translate(W/2,ay-(MV?level*10:0));if(MV)ctx.rotate((Math.sin(tt*5.3)*0.6+Math.sin(tt*2.1)*0.4)*level*0.04);
+      let im=(mst==='swap'&&S.photo2&&(run?JW.j>0.4:level>0.12))?S.photo2:src;
+      if(im===src){const ef=eyeFrame(run,ts,t);if(ef)im=ef;} /* v2.9.17 blink / wink frames */
+      if(mst==='jaw'){ /* the part under the jaw line drops with the voice */
+        const ly=(S.mouth.y-.5)*2*R0,mx=(S.mouth.x-.5)*2*R0,rx=S.mouth.s*R0,drop=(run?JW.j:level)*rx;
+        ctx.save();ctx.beginPath();ctx.rect(-R0*1.5,-R0*1.5,R0*3,ly+R0*1.5);ctx.clip();drawCover(im,-R0,-R0,R0*2,R0*2);ctx.restore();
+        if(drop>1&&S.mouth.gap==='fill'){ /* v2.9.12 option 'Smooth': fill the opened gap with the picture's own row at the jaw line, so no stripe of the circle colour shows beside the mouth */
+          ctx.save();ctx.beginPath();ctx.rect(-R0*1.5,ly,R0*3,drop+1);ctx.clip();ctx.translate(0,ly);ctx.scale(1,drop+2);ctx.translate(0,-ly+0.5);drawCover(im,-R0,-R0,R0*2,R0*2);ctx.restore();}
+        const mIn=S.mouth.in||'#000000'; /* inside of the open mouth: a colour, or 'bg' = whatever is behind the character */
+        if(drop>1&&mIn!=='bg'){ctx.fillStyle=mIn;ctx.beginPath();ctx.roundRect(mx-rx,ly-2,rx*2,drop+4,Math.min(drop/2,rx*0.25));ctx.fill();}
+        ctx.save();ctx.translate(0,drop);ctx.beginPath();ctx.rect(-R0*1.5,ly,R0*3,R0*3);ctx.clip();drawCover(im,-R0,-R0,R0*2,R0*2);ctx.restore();
+      }else drawCover(im,-R0,-R0,R0*2,R0*2);
+      if(mst==='line'||mst==='oval'){
+        const mx=(S.mouth.x-.5)*2*ar*z,my=(S.mouth.y-.5)*2*ar*z,rx=S.mouth.s*ar*z;
+        if(mst==='oval'){ctx.fillStyle='rgba(40,10,10,0.88)';ctx.beginPath();ctx.ellipse(mx,my,rx,rx*0.12+level*rx*0.75,0,0,Math.PI*2);ctx.fill();}
+        else{ /* lip line: thin at rest, opens softly with the voice */
+          const op=level*rx*0.36,up=my-op*0.35,lo=my+op;
+          ctx.beginPath();ctx.moveTo(mx-rx,my);ctx.quadraticCurveTo(mx,up-rx*0.06,mx+rx,my);ctx.quadraticCurveTo(mx,lo+rx*0.06,mx-rx,my);ctx.closePath();
+          ctx.fillStyle='rgba(45,8,14,'+Math.min(0.8,0.15+level*2.2).toFixed(2)+')';ctx.fill();
+          ctx.lineWidth=Math.max(2,rx*0.05);ctx.lineCap='round';ctx.strokeStyle='rgba(70,20,25,0.55)';
+          ctx.beginPath();ctx.moveTo(mx-rx,my);ctx.quadraticCurveTo(mx,up-rx*0.06,mx+rx,my);ctx.stroke();}
+      }
+      ctx.restore();}
+    else if(src)drawCover(src,W/2-ar,ay-ar,ar*2,ar*2);
+    else{ctx.fillStyle=T.muted;ctx.font=font(T.body,40);ctx.fillText(tr(S.avatar==='photo'?'Add a photo':'Add a video'),W/2,ay+14);}
+    ctx.restore();
+  }
+
+  const subY=framed?Y.subF:Y.sub;
+  {const _o=tpo('sub');ctx.save();ctx.translate(_o.dx,_o.dy);TBk='sub';}
+  const IV=evOn()?evLines(S.lang):[]; /* v2.9.14 invitation details */
+  ctx.globalAlpha=fa(1.6);
+  const capBelow=S.caps&&S.layout==='card'&&!framed; /* Card: captions right under the character, small text moves down by the signature */
+  const AT=S.avatar==='artTalk'&&S.layout==='card'&&!framed&&!IV.length; /* v2.9.18: captions and small text under the picture */
+  /* v2.9.20: captions are their own block (own position, draggable); the Studio shows a dashed placeholder */
+  const speaking=!!(S.caps&&run&&run.speaking),ghost=!run&&ui.studio&&!ui.still&&!ui.recBusy&&S.caps&&S.layout!=='clean';
+  const capPages=(cw,fs,mode)=>{ctx.save();ctx.font=font(T.body,fs);const txt=capText(run),key=S.lang+'|'+mode+'|'+txt;if(!run.cap||run.cap.key!==key)run.cap=buildCaps(txt,cw,2,run,key);ctx.restore();
+    const tt=ts-run.vStart;let pi=0;while(pi<run.cap.at.length-1&&tt>=run.cap.at[pi+1])pi++;const pg=run.cap.pages[pi]||[];return capHidden(pg)?[]:pg;};
+  const capBox=(cx,by,cw,lh,fs,bg,fg,L,isG)=>L.length&&capBlk(()=>{const cs=S.capStyle||'auto';let glow=false; /* v2.9.36 caption style */
+    if(!isG&&cs==='dark'){bg='rgba(0,0,0,0.5)';fg='#ffffff';}else if(!isG&&cs==='light'){bg=S.capBg||'#fff8ec';fg=S.capFg||'#8c1c24';}else if(!isG&&cs==='text'){bg='';fg=S.capFg||'#8c1c24';glow=true;}
+    ctx.save();ctx.font=font(T.body,fs);const bh=Math.max(1,L.length)*lh+30;
+    if(isG){ctx.setLineDash([12,9]);ctx.lineWidth=3;ctx.strokeStyle='rgba(233,138,58,0.9)';ctx.beginPath();ctx.roundRect(cx-cw/2-28,by,cw+56,bh,24);ctx.stroke();ctx.fillStyle='rgba(233,138,58,0.95)';}
+    else{if(bg){ctx.fillStyle=bg;ctx.beginPath();ctx.roundRect(cx-cw/2-28,by,cw+56,bh,24);ctx.fill();}ctx.fillStyle=fg;if(glow){ctx.shadowColor='rgba(255,250,238,0.95)';ctx.shadowBlur=12;}}
+    L.forEach((l,i)=>ctx.fillText(l,cx,by+15+lh*0.78+i*lh));ctx.restore();});
+  const GL=[tr('Captions appear here')];
+  const CS=AT&&PICT?capSlot():null; /* v2.9.36: captions inside a place (e.g. the plaque) */
+  if(CS){if(speaking){const P=PICT,x=P.ox+CS.x0*P.s,y=P.oy+CS.y0*P.s,w=(CS.x1-CS.x0)*P.s,h=(CS.y1-CS.y0)*P.s,fs=Math.round(Math.min((CS.fs||44)*0.8,40)*P.s);
+      const pg=capPages(w*0.92,fs,'slot');if(!pg.length)drawOneSlot(CS,P);else tblk('cap',()=>drawSlotText(pg.join(' '),x+w/2,y+h/2,w*0.94,h*0.94,{fam:(String(T.body).match(/\{s\}px\s+(.+)$/)||[,'Georgia, serif'])[1],wt:/italic/.test(T.body)?'italic 600':'600',fs,min:Math.max(10,fs*0.55),color:S.capFg||CS.color||'#8c1c24',lines:2}));}}
+  else if(AT){
+    if(speaking)capBox(W/2,1640,880,54,42,'rgba(0,0,0,0.5)','#ffffff',capPages(880,42,'art'));
+    else{if(ghost)capBox(W/2,1640,880,54,42,'','',GL,true);
+      ctx.font=font(T.body,44);ctx.fillStyle=T.muted;const SL=wrap(PZ(X.sub),900).slice(0,2);SL.forEach((l,i)=>ctx.fillText(l,W/2,(SL.length>1?1690:1720)+i*54));}
+  }
+  else if(capBelow){
+    const cbg=S.theme==='B'?'rgba(255,248,236,0.85)':'rgba(0,0,0,0.55)',cfg=S.theme==='B'?T.fg:'#ffffff';
+    if(speaking)capBox(W/2,ay+ar+50,880,54,42,cbg,cfg,capPages(880,42,'below'));else if(ghost)capBox(W/2,ay+ar+50,880,54,42,'','',GL,true);
+    if(IV.length){ctx.font=font(T.body,42);ctx.fillStyle=T.muted;const s1=wrap(PZ(X.sub),920)[0]||'';if(s1)ctx.fillText(s1,W/2,1540);drawIV(IV,T,1602,52,40);}
+    else{ctx.font=font(T.body,44);ctx.fillStyle=T.muted;const SL=wrap(PZ(X.sub),900).slice(0,2);
+    SL.forEach((l,i)=>ctx.fillText(l,W/2,(SL.length>1?1590:1620)+i*54));}
+  }
+  else if(S.layout==='clean'){}
+  else if(speaking){
+    const soc=S.layout!=='card',cw=soc?720:880,cx=soc?465:W/2;
+    capBox(cx,subY-60,cw,60,46,S.theme==='A'?'rgba(233,228,216,0.12)':S.theme==='B'?'rgba(255,248,236,0.8)':'rgba(255,255,255,0.14)',T.fg,capPages(cw,46,S.layout+'|'+framed));
+  }else if(IV.length){drawIV(IV,T,subY,56,44);
+  }else{
+    if(ghost){const soc=S.layout!=='card';capBox(soc?465:W/2,subY-60,soc?720:880,60,46,'','',GL,true);}
+    ctx.font=font(T.body,54);ctx.fillStyle=T.muted;const SUB=PZ(X.sub);let SL=wrap(SUB,900),lh=72;
+    if(SL.length>2){ctx.font=font(T.body,44);SL=wrap(SUB,900);lh=58;}
+    SL.slice(0,3).forEach((l,i)=>ctx.fillText(l,W/2,subY+i*lh));
+  }
+  TBk=null;ctx.restore();
+  const SIGN=PZ(X.sign).trim();
+  if(SIGN){
+    let sy=(S.avatar==='artTalk'&&S.layout==='card'&&!framed&&!IV.length)?1842:S.layout==='card'?(framed?1830:(IV.length?1788:1725)):S.layout==='clean'?1215:1425;
+    if(S.logo&&S.logoPos==='bottom'&&S.avatar!=='logo'&&!slotLogo())sy-=S.layout==='card'?30:60; /* v2.9.28: signature above the logo, e.g. "With warm wishes from" + logo */
+    ctx.font=withScript('600 '+(S.layout==='card'?70:58)+'px Caveat, "Segoe Script", cursive');ctx.fillStyle=T.acc;
+    let sa=1;if(S.saySign&&run&&run.vDur>0&&!run.tts){const all=capText(run).length||1,sg=SIGN.length,st0=run.vStart+run.vDur*(1-Math.min(0.9,sg/all))-0.25;sa=clamp((ts-st0)/0.4);} /* v2.9.20 */
+    if(sa>0){const ga=ctx.globalAlpha;ctx.globalAlpha=ga*sa;tblk('sign',()=>ctx.fillText(SIGN,S.layout==='card'?W/2:465,sy));ctx.globalAlpha=ga;}
+  }
+  if(S.logo&&S.logoPos==='bottom'&&S.avatar!=='logo'&&!slotLogo()){const sg=!!PZ(X.sign).trim(),card=S.layout==='card'; /* v2.9.28: with a signature the logo moves a little lower and smaller, under it */
+    drawLogo(W/2,card?(framed?1885:(IV.length?1852:(sg?1876:1810))):S.layout==='clean'?(sg?1340:1320):(sg?1425:1405),sg?380:340,card?(framed?50:(IV.length?56:(sg?58:90))):(sg?56:70));}
+  ctx.globalAlpha=1;
+  aiLabel(T,S.layout==='social'?198:S.theme==='B'?(framed?1914:1848):1906);
+
+  if(S.guide&&!(run&&run.rec)){
+    ctx.save();ctx.fillStyle='rgba(255,60,60,0.28)';
+    ctx.fillRect(0,0,W,160);ctx.fillRect(0,1450,W,H-1450);ctx.fillRect(930,700,W-930,750);
+    ctx.fillStyle='#fff';ctx.font='500 34px Inter, Arial, sans-serif';ctx.textAlign='center';
+    ctx.fillText('app buttons, captions, description',W/2,1700);ctx.fillText('app top bar',W/2,100);
+    ctx.restore();
+  }
+  if(coverP<1){
+    /* v2.9.8: the opening screen moves in the video (slow zoom of the artwork, the character breathes and bounces with the voice, the name pops in) */
+    const CM=!!(run&&run.mp4),cs=CM?ts+run.hold:0,breath=CM?1+0.022*Math.sin(t*2.4)+level*0.07:1,bob=CM?-level*10:0;
+    const zoomAt=(cx,cy,z,f)=>{ctx.save();ctx.translate(cx,cy);ctx.scale(z,z);ctx.translate(-cx,-cy);f();ctx.restore();};
+    const ATc=S.avatar==='artTalk'&&art&&S.atOpen==='fade',ATs=S.avatar==='artTalk'&&art&&S.atOpen!=='fade'; /* v2.9.22: fade into the picture, or (default) a close-up that slides away */
+    ctx.save();if(ATc)ctx.globalAlpha=1-coverP;else ctx.translate(0,-coverP*H);
+    ctx.fillStyle=T.cover;ctx.fillRect(0,0,W,H);
+    if(ATc){drawArtTalk(0,0,W,H,run,ts,t,level);const ga=ctx.globalAlpha;ctx.globalAlpha=ga*0.35;ctx.fillStyle=T.cover;ctx.fillRect(0,0,W,H);ctx.globalAlpha=ga;}
+    else if(ATs){const bl=blurPic();if(bl)ctx.drawImage(bl,0,0,W,H);ctx.globalAlpha=0.5;ctx.fillStyle=T.cover;ctx.fillRect(0,0,W,H);ctx.globalAlpha=1;}
+    else if(art){zoomAt(W/2,H/2,CM?1+0.04*clamp(cs/3.2):1,()=>drawCover(S.pic,0,0,W,H));ctx.globalAlpha=0.55;ctx.fillStyle=T.cover;ctx.fillRect(0,0,W,H);ctx.globalAlpha=1;}
+    drawHFX(t,run,ts,'back');
+    ctx.save();ctx.translate(0,bob);
+    const zc=breath;ctx.translate(W/2,770);ctx.scale(zc,zc);ctx.translate(-W/2,-770); /* v2.9.10: bigger character and name on the opening screen (readable on a phone and in the Etsy player) */
+    if(ui.waitPic&&!S.pic){} /* v2.9.40 web card: the picture is still loading, no stand-in character */
+    else if(S.logo&&S.avatar==='logo')drawLogo(W/2,800,560,300); /* v2.9.28: a logo replaces the character only when the logo itself talks */
+    else if(ATc){}
+    else if(ATs){drawCloseUp(W/2,760,240,run,ts,t,level,cuColour(),S.cuRing==='none');}
+    else if(art&&S.avatar==='photo'&&S.photo){const cr=240,cy=760;ctx.save();if(!NOF){ctx.beginPath();ctx.arc(W/2,cy,cr,0,7);ctx.clip();}drawCover(S.photo,W/2-cr,cy-cr,cr*2,cr*2);ctx.restore();
+      if(!NOF){ctx.strokeStyle=RING;ctx.lineWidth=5;if(S.hfx&&S.hfx.glow){ctx.shadowColor=RING;ctx.shadowBlur=40;}ctx.beginPath();ctx.arc(W/2,cy,cr,0,7);ctx.stroke();ctx.shadowBlur=0;}}
+    else if(S.avatar==='tree'||S.avatar==='santa'){(S.avatar==='tree'?drawTree:drawSanta)(W/2,790,230,P,CM?level:0,false,t);}
+    else if(S.avatar==='xoxo'){drawBauble(W/2,560,300,230,0.05*Math.sin(t*1.6),S.xoC||'#c8102e');}
+    else{ctx.fillStyle=T.acc;ctx.beginPath();ctx.arc(W/2,800,100,0,7);ctx.fill();
+    ctx.strokeStyle=T.cover;ctx.lineWidth=6;ctx.beginPath();ctx.arc(W/2,800,68,0,7);ctx.stroke();}
+    ctx.restore();
+    if(S.logo&&S.avatar!=='logo'&&!slotLogo()){if(ATc)drawLogo(W/2,165,560,120);else drawLogo(W/2,300,640,170);} /* v2.9.28: the sender's logo sits above the character, still (no pulsing with the voice) */
+    const OL=openLine(S.lang);
+    ctx.fillStyle=T.fg;let ofs=92;ctx.font=font(T.body,ofs);
+    while(ofs>64&&wrap(OL,960).length>2){ofs-=14;ctx.font=font(T.body,ofs);} /* long names: smaller, max 2 lines when possible */
+    while(ofs>48&&wrap(OL,960).length>3){ofs-=4;ctx.font=font(T.body,ofs);} /* v2.9.15: a long opening line may use 3 lines, smaller */
+    const olh=Math.round(ofs*1.18),oy=ATc?330:1130; /* v2.9.18: over the artwork the line sits at the top */
+    const pk=CM?clamp(cs/0.5):1,pop=CM?0.86+0.14*(1+2.7*Math.pow(pk-1,3)+1.7*Math.pow(pk-1,2)):1; /* ease-out-back, never transparent: the first frame (video thumbnail) already shows the name */
+    let owd=960;if(wrap(OL,960).length===2){for(let w=940;w>=480;w-=20){if(wrap(OL,w).length>2)break;owd=w;}} /* balance two lines, no single word left alone */
+    const OLL=wrap(OL,owd).slice(0,3);
+    tblk('open',()=>{zoomAt(W/2,oy+(OLL.length-1)*olh/2,pop,()=>OLL.forEach((l,i)=>ctx.fillText(l,W/2,oy+i*olh)));});
+    if(!run&&!ui.preroll&&ui.interactive){ctx.fillStyle=T.muted;ctx.font=font(T.body,44);ctx.fillText(ui.loading?loadTxt(S.lang):LG(S.lang).tap,W/2,ATc?1760:1440);}
+    aiLabel(T,S.layout==='social'?196:1880);
+    ctx.restore();
+  }
+  drawHFX(t,run,ts,'front');
+  drawDemo();
+  if(ui.studio&&!run&&!ui.recBusy&&!ui.still){ /* v2.9.36: boxes with a resize corner (Studio only, never in PNG/MP4/web) */
+    const ks=ui.showBoxes?[...Object.keys(TB),...Object.keys(SB)]:[ui.drag,ui.hov].filter(Boolean);
+    ctx.save();ctx.setLineDash([14,10]);ctx.lineWidth=3;
+    for(const k of new Set(ks)){const b=SB[k]?{...SB[k]}:TB[k]?{x0:TB[k].x0-14,y0:TB[k].y0-12,x1:TB[k].x1+14,y1:TB[k].y1+12}:null;if(!b||!(b.x1>b.x0))continue;
+      const on=k===ui.drag||k===ui.hov;ctx.strokeStyle=on?'#e98a3a':SB[k]?'rgba(40,120,200,0.75)':'rgba(233,138,58,0.55)';ctx.strokeRect(b.x0,b.y0,b.x1-b.x0,b.y1-b.y0);
+      ctx.setLineDash([]);ctx.fillStyle=ctx.strokeStyle;ctx.fillRect(b.x1-11,b.y1-11,22,22);ctx.setLineDash([14,10]);}
+    ctx.restore();}
+}
+
+/* ---------- captions in step with the voice ----------
+   Text is cut into short pieces (one sentence, max 2 lines). Times come from the voice itself:
+   we find where the voice speaks and where it pauses, share the speaking time by the number
+   of letters, and move each change of caption into the nearest pause. */
+function speechSegs(buf,rate){
+  if(!buf)return null;
+  const sr=buf.sampleRate,win=Math.round(sr*0.02),n=Math.floor(buf.length/win),ch=[];
+  for(let c=0;c<buf.numberOfChannels;c++)ch.push(buf.getChannelData(c));
+  const rms=new Float32Array(n);
+  for(let i=0;i<n;i++){let s=0;for(const d of ch)for(let j=i*win;j<(i+1)*win;j+=2)s+=d[j]*d[j];rms[i]=Math.sqrt(s/(win/2*ch.length));}
+  const sorted=[...rms].sort((a,b)=>a-b),p90=sorted[Math.floor(n*0.9)]||0;
+  const thr=Math.max(0.006,p90*0.12);
+  let segs=[],on=-1;
+  for(let i=0;i<=n;i++){const v=i<n&&rms[i]>thr;if(v&&on<0)on=i;if(!v&&on>=0){segs.push([on*0.02,i*0.02]);on=-1;}}
+  const m=[];for(const g of segs){const l=m[m.length-1];if(l&&g[0]-l[1]<0.22)l[1]=g[1];else m.push(g);}
+  const out=m.filter(g=>g[1]-g[0]>0.08).map(g=>[g[0]/rate,g[1]/rate]);
+  return out.length?out:null;
+}
+function buildCaps(say,cw,per,run,key){ /* v2.9.35: the opening part (spoken name + opening line) and the message are timed separately; page changes go into the pauses that fit best (sentence ends prefer longer pauses) */
+  const clean=t=>String(t||'').replace(/\[[^\]]*\]\s*/g,'').replace(/\{[^}]*\}/g,'').replace(/\s+/g,' ').trim();
+  const P=sayParts(S.lang),G1=clean(((run&&run.namePre)||'')+(P.open||'')),G2=clean([P.say,P.sign].filter(Boolean).join(' '));
+  const groups=(G1&&G2&&clean(say)===clean(G1+' '+G2))?[G1,G2]:[clean(say)];
+  const pages=[],chars=[],grp=[];
+  groups.forEach((gt,gi)=>{const sents=gt.match(/[\s\S]+?(?:[.!?…。！？]+["»”)]*(?=\s|$)|$)\s*/g).filter(x=>x.trim()) /* v2.9.37: "timefor.ai" is not a sentence end */||[gt];
+    for(const se of sents){const ls=wrap(se.trim(),cw);for(let i=0;i<ls.length;i+=per){const pg=ls.slice(i,i+per);pages.push(pg);chars.push(Math.max(1,pg.join(' ').length));grp.push(gi);}}});
+  const C=chars.reduce((a,b)=>a+b,0)||1,at=[0];
+  const segs=run.segs;
+  if(!segs){let c=0;for(let i=0;i<pages.length-1;i++){c+=chars[i];at.push(run.vDur*c/C);}return {key,pages,at};}
+  const dur=g=>g[1]-g[0],cumV=[0];segs.forEach(g=>cumV.push(cumV[cumV.length-1]+dur(g)));const V=cumV[segs.length];
+  const real=v=>{for(const g of segs){const d=dur(g);if(v<=d)return g[0]+v;v-=d;}return segs[segs.length-1][1];};
+  /* gaps between voice parts: j = 1..segs.length-1 (between segs[j-1] and segs[j]) */
+  const NG=segs.length-1,n1=grp.filter(x=>x===0).length,B=pages.length-1;
+  const K=run.openK,anchor=groups.length===2&&K!=null&&K+1<=NG&&n1>0&&n1<pages.length?K+1:0;
+  const est=b=>{let c=0;if(anchor){if(b<n1-1){for(let i=0;i<=b;i++)c+=chars[i];const C1=chars.slice(0,n1).reduce((a,x)=>a+x,0);return cumV[anchor]*c/C1;}
+      for(let i=n1;i<=b;i++)c+=chars[i];const C2=chars.slice(n1).reduce((a,x)=>a+x,0)||1;return cumV[anchor]+(V-cumV[anchor])*c/C2;}
+    for(let i=0;i<=b;i++)c+=chars[i];return V*c/C;};
+  const sentEnd=b=>/[.!?…。！？]["»”)]*$/.test((pages[b][pages[b].length-1]||'').trim());
+  const gcost=(b,j)=>{const e=est(b),len=segs[j][0]-segs[j-1][1];return (cumV[j]-e)**2-0.35*Math.min(len,1.2)*(sentEnd(b)?1:0.25);};
+  /* dynamic programming: dp[j] = best cost with the last used gap j (0 = none yet) */
+  let dp=new Array(NG+1).fill(Infinity),bk=[];dp[0]=0;
+  for(let b=0;b<B;b++){const nd=new Array(NG+1).fill(Infinity),nb=new Array(NG+1).fill(null);
+    for(let j=0;j<=NG;j++){if(dp[j]===Infinity)continue;
+      if(!(anchor&&b===n1-1)){const c=dp[j]+0.6;if(c<nd[j]){nd[j]=c;nb[j]={p:j,g:0};}} /* no pause: change inside the speech */
+      for(let k=j+1;k<=NG;k++){if(anchor&&b===n1-1&&k!==anchor)continue;if(anchor&&b<n1-1&&k>=anchor)break;if(anchor&&b>=n1&&k<=anchor)continue;
+        const c=dp[j]+gcost(b,k);if(c<nd[k]){nd[k]=c;nb[k]={p:j,g:k};}}}
+    dp=nd;bk.push(nb);}
+  let j=0,bc=Infinity;dp.forEach((c,i)=>{if(c<bc){bc=c;j=i;}});
+  const pick=new Array(B).fill(0);
+  if(bc<Infinity)for(let b=B-1;b>=0;b--){const s=bk[b][j];if(!s)break;pick[b]=s.g;j=s.p;}
+  at[0]=Math.max(0,segs[0][0]-0.15);
+  for(let b=0;b<B;b++){const g=pick[b];const t=g?Math.max(segs[g-1][1]+0.08,segs[g][0]-0.35):real(est(b));at.push(Math.max(at[at.length-1]+0.4,t));}
+  return {key,pages,at};
+}
+
+/* ---------- playback ---------- */
+let RUN=null;
+const buf=new Float32Array(1024);
+function loop(){
+  if(EXP){requestAnimationFrame(loop);return;} /* v2.9.32: the precise export draws the frames itself */
+  const t=NOW()/1000;
+  let target=0;
+  if(RUN){
+    const ts=(NOW()-RUN.t0)/1000;
+    if(RUN.an){RUN.an.getFloatTimeDomainData(buf);let s=0;for(let i=0;i<buf.length;i++)s+=buf[i]*buf[i];JW.raw=Math.sqrt(s/buf.length);target=clamp(JW.raw*7);}
+    if(RUN.tts&&RUN.speaking)target=0.25+0.55*Math.abs(Math.sin(ts*13))*(0.6+0.4*Math.sin(ts*3.1));
+    if(!RUN.tts)RUN.speaking=ts>RUN.vStart&&ts<RUN.vStart+RUN.vDur;
+    const left=Math.max(0,RUN.total-Math.min(ts,RUN.total));
+    if(RUN.rec)setStatus('Recording… '+left.toFixed(0)+' s left (keep this tab open)');
+    if(ts>=RUN.total)finish();
+  }
+  level+=(target-level)*0.45;
+  jawStep(RUN&&RUN.an?JW.raw:target/7,!!RUN&&target>0.01);
+  render(t,RUN);
+  requestAnimationFrame(loop);
+}
+function setStatus(s){ui.status(s);}
+function tr(s){return ui.tr(s);}
+
+function pickMime(){
+  const list=['video/mp4;codecs=avc1.42E01E,mp4a.40.2','video/mp4','video/webm;codecs=vp9,opus','video/webm'];
+  return list.find(m=>window.MediaRecorder&&MediaRecorder.isTypeSupported(m))||'';
+}
+
+/* ---------- v2.9.15: opening screen line and its length ---------- */
+const OPEN_CH={short:40,medium:65,long:90};
+function openLine(L){const X=S.text[L]||{};return PZ(X.open!=null?X.open:LG(L).open).trim()||LG(L).you;}
+function openSecs(L){const m=S.openLen;if(m==='2'||m==='3'||m==='4')return +m;const n=openLine(L).length;return n<=OPEN_CH.short?2:n<=OPEN_CH.medium?3:4;}
+/* v2.9.29: before playing or recording, decode every picture and measure the frame areas once, so the first seconds of the video don't freeze */
+let PRE_HP=false;
+async function warmUp(){
+  const ims=['pic','logo','photo','photo2',...FR_KEYS,...efxKeys()].map(k=>S[k]).filter(i=>i&&i.decode);
+  await Promise.all(ims.map(i=>i.decode().catch(()=>{})));
+  const B=S.avatar==='artTalk'?S.pic:S.photo;
+  if(B)FR_KEYS.forEach(k=>{if(S[k])partRect(S[k],B);});
+  (S.efx||[]).forEach(e=>{const a=S['efx_'+e.id+'_A'],b=S['efx_'+e.id+'_B'];if(e.t==='swing')alphaBox(a);else if(S.pic){if(a)partRect(a,S.pic);if(b)partRect(b,S.pic);}});
+  try{if(S.pic){blurPic();picAccent();faceBox();}}catch(e){}
+  try{render(performance.now()/1000,null);}catch(e){}
+  await new Promise(ok=>requestAnimationFrame(()=>requestAnimationFrame(ok)));
+}
+async function play(record,off){S._finalDone=false; /* v2.9.32: off = {c: OfflineAudioContext, out, vout} builds the same sound offline for the precise MP4 export and returns the run */
+  if(!off){stop(true);
+  if(record)setStatus(tr('Getting ready…'));await warmUp();}
+  let preRec=null;
+  if(record&&!off){ /* v2.9.29: the recorder starts first and runs ~0.35 s on the still opening screen; only then the voice and the animation start, so a slow start of the video encoder can't push the picture out of sync with the voice */
+    const mime=pickMime();
+    if(!mime){alert(tr('This browser cannot record video. Please use Chrome.'));return;}
+    const stream=new MediaStream([...cv.captureStream(30).getVideoTracks(),...DEST.stream.getAudioTracks()]);
+    const rec=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:8000000});
+    const chunks=[];rec.ondataavailable=e=>{if(e.data.size)chunks.push(e.data);};
+    rec.onstop=async()=>{ui.recBusy=false;
+      let blob=new Blob(chunks,{type:mime});const ext=mime.startsWith('video/mp4')?'mp4':'webm';
+      if(ext==='mp4'&&typeof mp4MarkAI==='function'&&aiUsed())blob=await mp4MarkAI(blob);
+      const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+      a.download=mp4Name(ext);a.click();
+      setStatus('Saved as .'+ext+(ext==='webm'?' (Chrome here can\'t make MP4; convert free at cloudconvert.com)':''));
+    };
+    const c0=ac();await c0.resume();PRE_HP=ui.hold;ui.hold=true;ui.preroll=true;
+    const ka=c0.createOscillator(),kg=c0.createGain();kg.gain.value=0.00002;ka.connect(kg);kg.connect(DEST);ka.start(); /* an inaudible tone keeps the audio track running from the very first video frame, so the MP4 can't shift the voice ahead of the picture */
+    rec.addEventListener('stop',()=>{try{ka.stop();kg.disconnect();}catch(e){}});
+    await new Promise(ok=>setTimeout(ok,120));rec.start();
+    await new Promise(ok=>setTimeout(ok,400));preRec=rec;
+  }
+  const c=off?off.c:ac();if(!off)await c.resume();
+  if(ui.studio&&S.rcp&&S.rcp.n&&S.names&&S.voiceMode!=='tts'){const it0=nmCur(S.lang);if(it0&&!it0._buf){try{it0._buf=await c.decodeAudioData(it0.b.slice(0));}catch(e){}}} /* v2.9.29: the name clip is decoded before the timeline starts, so the voice and the picture start together */
+  const mp4=!!record||!!off||ui.studio===true||ui.interactive===true; /* v2.9.41: the web card uses the same timing as the MP4 and the Studio preview: the voice (name first) starts on the opening screen and the card opens in a pause */
+  const L=S.lang,X=S.text[L],now=c.currentTime;let OS=mp4?openSecs(L):0,hold=mp4?OS-0.4:0,vStart=mp4?0.5-hold:1.8; /* v2.9.8 MP4: voice starts 0.5 s in, on the opening screen; v2.9.15: the card opens after OS seconds (2 s default, 3-4 s for a longer opening line) */
+  const master=c.createGain();master.connect(off?off.out:c.destination);if(DEST&&!off)master.connect(DEST);
+  const vg=c.createGain(),an=c.createAnalyser();an.fftSize=2048;vg.connect(an);an.connect(master);if(off)vg.connect(off.vout,0,2);
+  const run={namePre:ui.studio?'':(S._namePre||''),t0:performance.now(),vStart,vDur:0,an,nodes:[],master,tts:false,speaking:false,rec:null,timers:[],mp4,hold};
+
+  if(S.avatar==='video'&&S.videoEl){
+    const v=S.videoEl;
+    if(!v._src)v._src=c.createMediaElementSource(v);
+    v._src.connect(vg);run.vidSrc=v._src;
+    v.pause();v.currentTime=0;
+    run.timers.push(setTimeout(()=>v.play(),(vStart+hold)*1000));
+    run.vDur=v.duration||5;
+  }else if(S.voiceMode!=='tts'&&S.voice[L]){
+    let VB=S.voice[L];
+    if(ui.studio&&S.rcp&&S.rcp.n&&S.names){const nm=S.rcp.n.trim().toLowerCase(),it=Object.values(S.names.items||{}).find(x=>x.b&&String(x.n||'').trim().toLowerCase()===nm&&(!x.cl||x.cl===L)); /* v2.9.19: the name first, as on the web card */
+      if(it){try{if(!it._buf)it._buf=await c.decodeAudioData(it.b.slice(0));VB=joinVoice(it._buf,VB);if(!sayText(L).toLowerCase().includes(nm))run.namePre=S.rcp.n.trim()+'! ';}catch(e){}}else run.noName=S.rcp.n;}
+    const src=c.createBufferSource();src.buffer=VB;
+    const f=applyFx(c,src,S.fx);f.out.connect(vg);src.start(now+vStart+hold);
+    run.nodes.push(src,...f.extra);run.vDur=src.buffer.duration/f.rate;run.segs=speechSegs(src.buffer,f.rate);
+    if(mp4&&run.segs&&(S.openLen||'auto')==='auto'){ /* v2.9.31: the card opens in a pause of the voice (after the name and the first phrase), never in the middle of a sentence */
+      const sg=run.segs,minO=OS-0.3;let pick=null;
+      for(let i=0;i<sg.length;i++){const end=0.5+sg[i][1],next=i+1<sg.length?0.5+sg[i+1][0]:end+9;if(end>6)break;if(end>=minO&&next-end>=0.3){pick=end;run.openK=i;break;}}
+      if(pick!=null){OS=Math.max(OS,pick+0.12);hold=OS-0.4;vStart=0.5-hold;run.hold=hold;run.vStart=vStart;}}
+  }else if(S.voiceMode==='tts'&&sayText(L).trim()){
+    const SY=sayText(L);run.tts=true;run.vDur=SY.split(/\s+/).length*0.42;
+    run.timers.push(setTimeout(()=>speak(SY,L,run),(vStart+hold)*1000));
+  }
+  run.total=Math.max(7,vStart+run.vDur+1.8);
+  if(S.sfx&&S.voiceMode!=='tts'){ /* v2.9.37 sound effect */
+    const o=S.sfxOpt||{},st=(o.when==='end'?vStart+run.vDur+0.15:(mp4?0.4:0))+(+o.at||0);
+    const sx=c.createBufferSource();sx.buffer=S.sfx;const sg=c.createGain();sg.gain.value=o.vol??0.8;sx.connect(sg);sg.connect(master);
+    sx.start(now+Math.max(0,hold+st));run.nodes.push(sx);run.total=Math.max(run.total,st+S.sfx.duration+0.4);}
+  if(S.avatar==='xoxo'&&S.xoSnd!==false){const b=now+hold+XO.start;XO.hits.forEach((h,k)=>tinkAt(c,master,b+h,[2349,2637,3136][k],0.16,run));tinkAt(c,master,b+XO.m1+0.05,3520,0.07,run);} /* v2.9.17 */
+
+  if(S.music){
+    const m=c.createBufferSource();m.buffer=S.music;m.loop=true;
+    const mg=c.createGain();mg.gain.setValueAtTime(0,now);mg.gain.linearRampToValueAtTime(S.mvol,now+1);
+    mg.gain.setValueAtTime(S.mvol,now+hold+run.total-1.2);mg.gain.linearRampToValueAtTime(0,now+hold+run.total);
+    m.connect(mg);mg.connect(master);m.start(now);run.nodes.push(m);
+  }
+
+  if(off)return run;
+  if(record){run.rec=preRec;}
+  RUN=run;run.t0=performance.now()+hold*1000;if(ui.preroll){ui.hold=PRE_HP;ui.preroll=false;}
+  if(!record)setStatus(run.noName?tr('Playing preview… (no spoken name for "')+run.noName+tr('": make it under Business campaign → Spoken names)'):'Playing preview…');
+}
+function speak(text,L,run){
+  if(!('speechSynthesis' in window))return;
+  const u=new SpeechSynthesisUtterance(text);u.lang=LG(L).tts;
+  const v=speechSynthesis.getVoices().find(v=>v.lang&&v.lang.toLowerCase().startsWith(L));
+  if(v)u.voice=v;else if(L!=='en')setStatus('No computer voice for this language on this device. Use ElevenLabs or record.');
+  const fx={higher:1.4,cat:1.8,deeper:0.6,robot:0.9}[S.fx];if(fx)u.pitch=fx;
+  u.onstart=()=>{run.speaking=true;};u.onend=()=>{run.speaking=false;};
+  speechSynthesis.speak(u);
+}
+function finish(){
+  const r=RUN;if(!r)return;RUN=null;S._finalDone=true; /* v2.9.37: the web card keeps the final gesture's end pose */
+  r.nodes.forEach(n=>{try{n.stop();}catch(e){}});
+  r.timers.forEach(clearTimeout);
+  if(r.vidSrc){try{r.vidSrc.disconnect();}catch(e){}S.videoEl.pause();}
+  if('speechSynthesis' in window)speechSynthesis.cancel();
+  setTimeout(()=>{try{r.master.disconnect();}catch(e){}},300);
+  if(r.rec){ui.recBusy=true;setTimeout(()=>r.rec.stop(),200);setStatus('Saving video…');}
+  else setStatus('Ready');
+}
+function stop(silent){ui.recBusy=false;if(ui.preroll){ui.hold=PRE_HP;ui.preroll=false;}if(RUN){if(RUN.rec){RUN.rec.ondataavailable=null;RUN.rec.onstop=null;try{RUN.rec.stop();}catch(e){}RUN.rec=null;}finish();}if(!silent)setStatus('Stopped');}
+
+
+</script>
+<script>
+const C={"v":2,"base":"https://demo.getgreetvox.com/merfijs","title":"A greeting for you","design":{"tstyle":{},"sfxOpt":{"when":"open","vol":0.8,"at":0},"openView":"auto","openBox":null,"efx":[{"id":"evyyp9","t":"loop","n":"Tail","when":"sometimes","ms":150,"gap":5,"burst":1.4}],"slots":[{"id":"s2wniy","k":"text","x0":70,"y0":360,"x1":1010,"y1":500,"txt":"{head} ","font":"head","fs":74,"min":36,"lines":2,"color":"#2f5a3a","src":"headline"},{"id":"s44mzw","k":"auto","x0":214,"y0":150,"x1":814,"y1":310,"txt":"vieta jūsu logo","font":"head","fs":55,"min":18,"lines":2,"color":"#8c1c24"}],"capStyle":"auto","capBg":"","capFg":"","mouthMix":"swap","cuRing":"#df762a","atOpen":"slide","sayOpen":true,"saySign":true,"tpos":{"head":{"dx":0,"dy":-174},"sub":{"dx":0,"dy":-333},"sign":{"dx":0,"dy":-171},"cap":{"dx":0,"dy":-212}},"xoC":"#c8102e","xoSnd":true,"blink":true,"gest":{"g1":"wink"},"glow":false,"gx":0.5,"gy":0.6,"ats":1,"aty":0,"kind":"greeting","ev":{"date":"","time":"","end":"","place":"","map":"","show":true,"rsvp":"message","mail":"","phone":"","wa":true,"sms":true,"form":"","by":""},"demo":false,"demoTxt":"DEMO · {company}","ghosts":false,"hfx":{"snow":true},"dripC":"#3d1d0c","theme":"A","layout":"card","caps":true,"logoPos":"bottom","brand":true,"bBg":"#0f2a44","bAcc":"#624e28","picMode":"art","avatar":"artTalk","mouth":{"x":0.5,"y":0.68,"s":0.16},"fx":"normal","mvol":0.3,"voiceMode":"eleven","frame":"circle","ringC":"","motion":false,"aiLabel":false,"realPerson":false,"openLen":"3"},"groups":[{"id":"g1","name":"Clients"},{"id":"g2","name":"Team"}],"text":{"g1":{"en":{"top":"","head":"Merry Christmas, {name}!","sub":"","say":"Merry Christmas from all of us! [warmly] Thank you for visiting us this year, you made our days brighter. Stay cosy, and see you soon!","sign":"— {company}","open":"{name}, a little greeting for you!"},"lv":{"top":"","head":"Priecīgus Ziemassvētkus, {name}!","sub":"","say":"Priecīgus Ziemassvētkus no mums visiem! [silti] Paldies, ka šogad nāci ciemos, tu padarīji mūsu dienas gaišākas. Siltus svētkus un uz drīzu tikšanos!","sign":"— Tava {company}","open":"{name}, šis ir sveiciens tev!"},"ru":{"top":"","head":"С Рождеством!","sub":"","say":"","sign":"","open":""},"de":{"top":"","head":"Frohe Weihnachten!","sub":"","say":"","sign":"","open":""},"lt":{"top":"","head":"Linksmų Šv. Kalėdų!","sub":"","say":"","sign":"","open":""},"et":{"top":"","head":"Häid jõule!","sub":"","say":"","sign":"","open":""},"es":{"top":"","head":"¡Feliz Navidad!","sub":"","say":"","sign":"","open":""}},"g2":{"en":{"top":"","head":"Merry Christmas, {name}!","sub":"","say":"Merry Christmas from all of us! [warmly] Thank you for visiting us this year, you made our days brighter. Stay cosy, and see you soon!","sign":"— {company}","open":"{name}, a little greeting for you!"},"lv":{"top":"","head":"Priecīgus Ziemassvētkus, {name}!","sub":"","say":"Priecīgus Ziemassvētkus no mums visiem! [silti] Paldies, ka šogad nāci ciemos, tu padarīji mūsu dienas gaišākas. Siltus svētkus un uz drīzu tikšanos!","sign":"— {company}","open":"{name}, mazs sveiciens tev!"},"ru":{"top":"","head":"С Рождеством!","sub":"","say":"","sign":"","open":""},"de":{"top":"","head":"Frohe Weihnachten!","sub":"","say":"","sign":"","open":""},"lt":{"top":"","head":"Linksmų Šv. Kalėdų!","sub":"","say":"","sign":"","open":""},"et":{"top":"","head":"Häid jõule!","sub":"","say":"","sign":"","open":""},"es":{"top":"","head":"¡Feliz Navidad!","sub":"","say":"","sign":"","open":""}}},"voices":{"g1":{"lv":"voices/g1-lv.mp3"},"g2":{}},"img":{"pic":"images/pic.jpg","eyeH":"images/eyeH.jpg","eyeC":"images/eyeC.jpg","winkH":"images/winkH.jpg","winkC":"images/winkC.jpg","mouthH":"images/mouthH.jpg","mouthO":"images/mouthO.jpg","efx_evyyp9_A":"images/efx_evyyp9_A.jpg","efx_evyyp9_B":"images/efx_evyyp9_B.jpg"},"music":null,"sfx":null,"defLang":"lv","formal":false,"until":"","names":1};
+(function(){
+  Object.assign(S,C.design);S.guide=false;if(S.voiceMode==='tts')S.voiceMode='file';if(S.avatar==='video')S.avatar='cat';
+  ui.interactive=true;ui.hold=true;
+  let r=['','',C.groups[0].id,C.defLang,C.formal?1:0];
+  try{let k=(location.hash||'').replace(/^#(k=)?/,'')||new URLSearchParams(location.search).get('k');if(!k&&/^k:/.test(window.name))k=window.name.slice(2);
+    if(k){const b=atob(k.replace(/-/g,'+').replace(/_/g,'/'));const u=Uint8Array.from(b,ch=>ch.charCodeAt(0));const a=JSON.parse(new TextDecoder().decode(u));if(Array.isArray(a))r=a;}}catch(e){}
+  const gid=C.text[r[2]]?r[2]:C.groups[0].id;
+  let lang=C.text[gid][r[3]]?r[3]:C.defLang;
+  S.rcp={n:String(r[0]||''),c:String(r[1]||''),f:!!r[4],gest:['wink','none'].includes(r[6])?r[6]:'',p:String(r[7]||'')};S.group=gid;
+  S.text=C.text[gid];S.lang=lang;S.voice={};
+  document.documentElement.lang=lang;
+  if(C.until&&new Date().toISOString().slice(0,10)>C.until){
+    const GONE={en:'This card is no longer available.',lv:'Šī kartīte vairs nav pieejama.',ru:'Эта открытка больше недоступна.',de:'Diese Karte ist nicht mehr verfügbar.',lt:'Šis atvirukas nebepasiekiamas.',et:'See kaart pole enam saadaval.',es:'Esta tarjeta ya no está disponible.'};
+    document.title=GONE[lang]||GONE.en;document.getElementById('wrap').innerHTML='<p style="font:500 20px Inter,Arial,sans-serif;color:#fff;text-align:center;padding:24px">'+(GONE[lang]||GONE.en)+'</p>';
+    if(history.replaceState)history.replaceState(null,'',location.pathname);return;}
+  const t=PZ(S.text[lang].open!=null?S.text[lang].open:LG(lang).open).trim();if(t)document.title=t;if(S.demo)document.title='DEMO · '+document.title;
+  const img=u=>new Promise(ok=>{if(!u)return ok(null);const i=new Image();i.onload=()=>ok(i);i.onerror=()=>ok(null);i.src=u;});
+  const aud=u=>u?fetch(u).then(x=>x.arrayBuffer()).then(ab=>ac().decodeAudioData(ab)).catch(()=>null):Promise.resolve(null);
+  const vf=(C.voices[gid]||{})[lang];
+  const nf=(C.names&&/^[a-z0-9]{6,16}$/.test(String(r[5]||'')))?'n/'+r[5]+'.mp3':null;
+  const joinBuf=(a,b)=>{const sr=b.sampleRate,gap=Math.round(0.18*sr),ch=Math.max(a.numberOfChannels,b.numberOfChannels),o=ac().createBuffer(ch,a.length+gap+b.length,sr);for(let c=0;c<ch;c++){const d=o.getChannelData(c);d.set(a.getChannelData(Math.min(c,a.numberOfChannels-1)),0);d.set(b.getChannelData(Math.min(c,b.numberOfChannels-1)),a.length+gap);}return o;};
+  const ready=Promise.all([img(C.img.logo),img(C.img.pic),img(C.img.photo),aud(vf),aud(C.music),img(C.img.photo2),loadHeadFont(C.img.font),aud(nf),aud(C.sfx)]).then(([lo,pi,ph,v,m,p2,fo,nv,sx])=>{S.logo=lo;S.pic=pi;S.photo=ph;S.photo2=p2;S.music=m;S.sfx=sx||null;
+    if(v&&nv&&nv.sampleRate===v.sampleRate){S.voice[lang]=joinBuf(nv,v);const X=S.text[lang];if(S.rcp.n&&X&&!String(X.say||'').toLowerCase().includes('{name}'))if(!sayText(lang).toLowerCase().includes(S.rcp.n.trim().toLowerCase()))S._namePre=S.rcp.n.trim()+'! ';}
+    else if(v)S.voice[lang]=v;});
+  const frs=Promise.all([...FR_KEYS,...efxKeys()].map(k=>img(C.img[k]).then(i=>{S[k]=i;})));
+  let started=false,busy=false;
+  const again=document.getElementById('again');again.textContent='\u21bb '+LG(lang).again;
+  const inv=(S.kind==='invite'&&typeof initInvite==='function')?initInvite(lang):null;
+  ui.status=s=>{if(s==='Ready'&&started)again.classList.remove('hide');};
+  async function go(){if(busy||RUN)return;busy=true;again.classList.add('hide');ui.loading=!started; /* v2.9.40: "Loading…" right after the tap */
+    try{await ac().resume();}catch(e){}
+    await Promise.race([Promise.all([ready,frs]),new Promise(ok=>setTimeout(ok,8000))]);
+    await loadTextFonts();ui.loading=false;
+    const TT=S.brand?brandTheme(TH[S.theme]):TH[S.theme];document.documentElement.style.background=document.body.style.background=TT.bg;
+    started=true;ui.hold=false;play(false);busy=false;if(inv)setTimeout(inv.show,2200);}
+  cv.addEventListener('click',()=>{if(!started)go();});
+  again.addEventListener('click',go);
+  const sf=scriptFams(lang);if(LG(lang).rtl)document.documentElement.dir='rtl';
+  const fl=(sf?sf.map(f=>'500 60px "'+f+'"'):[]).concat(['600 60px Caveat','400 60px "Playfair Display"','800 60px Nunito','600 60px Nunito','500 60px "Crimson Pro"','italic 400 60px "Crimson Pro"','400 60px Inter','500 60px Inter']);
+  const sample='Bū ļ ā č ē ģ ī ķ ņ š ū ž Жж '+LG(lang).tap+LG(lang).ai+(S.text[lang].head||'')+(S.text[lang].sub||'');
+  Promise.race([Promise.all(fl.map(f=>document.fonts.load(f,sample))),new Promise(ok=>setTimeout(ok,2500))]).catch(()=>{})
+    .finally(()=>requestAnimationFrame(loop)); /* v2.9.40: draw at once with "Loading…", picture and "tap to open" come when ready */
+  ui.loading=true;ui.waitPic=!!C.img.pic;ready.finally(()=>{if(!busy)ui.loading=false;});
+  {const TT=S.brand?brandTheme(TH[S.theme]):TH[S.theme];document.documentElement.style.background=document.body.style.background=TT.bg;}
+})();
+</script>
+</body>
+</html>
